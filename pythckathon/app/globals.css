@@ -1,0 +1,704 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+/* ═══════════════════════════════════════════════════════
+   PythFeeds Design Tokens
+   Unified color system — Pyth Network brand identity
+   ═══════════════════════════════════════════════════════ */
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-jb-mono);
+  --font-display: var(--font-syne);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --animate-rainbow: rainbow var(--speed, 2s) infinite linear;
+  --color-color-5: var(--color-5);
+  --color-color-4: var(--color-4);
+  --color-color-3: var(--color-3);
+  --color-color-2: var(--color-2);
+  --color-color-1: var(--color-1);
+  @keyframes rainbow {
+  0% {
+    background-position: 0%;
+    }
+  100% {
+    background-position: 200%;
+    }
+  }
+}
+
+/* ── Light Theme (default) — Clean, professional, white-forward ── */
+:root {
+  --radius: 0.625rem;
+  --background: #FFFFFF;
+  --foreground: #09090B;
+
+  /* ── PythFeeds semantic tokens ── */
+  --pf-accent: #4338CA;
+  --pf-accent-muted: rgba(67, 56, 202, 0.07);
+  --pf-accent-hover: #4F46E5;
+  --pf-up: #059669;
+  --pf-up-muted: rgba(5, 150, 105, 0.08);
+  --pf-down: #DC2626;
+  --pf-down-muted: rgba(220, 38, 38, 0.08);
+  --pf-warning: #D97706;
+  --pf-warning-muted: rgba(217, 119, 6, 0.08);
+  --pf-info: #2563EB;
+  --pf-star: #D97706;
+  --pf-teal: #0D9488;
+
+  /* ── Backward-compat: --cmc-* aliases ── */
+  --cmc-blue: var(--pf-accent);
+  --cmc-blue-light: #6366F1;
+  --cmc-up: var(--pf-up);
+  --cmc-down: var(--pf-down);
+  --cmc-star: var(--pf-star);
+  --cmc-neutral-1: #F8F9FA;
+  --cmc-neutral-2: #F1F3F5;
+  --cmc-neutral-3: #DEE2E6;
+  --cmc-neutral-4: #868E96;
+  --cmc-neutral-5: #495057;
+  --cmc-neutral-6: #343A40;
+  --cmc-neutral-7: #E9ECEF;
+  --cmc-bg: #FFFFFF;
+  --cmc-text: #09090B;
+  --cmc-text-sub: #495057;
+  --cmc-border: #E5E7EB;
+
+  /* ── shadcn primitives (light) ── */
+  --card: #FFFFFF;
+  --card-foreground: #09090B;
+  --popover: #FFFFFF;
+  --popover-foreground: #09090B;
+  --primary: #09090B;
+  --primary-foreground: #FFFFFF;
+  --secondary: #F8F9FA;
+  --secondary-foreground: #09090B;
+  --muted: #F8F9FA;
+  --muted-foreground: #6B7280;
+  --accent: #F3F4F6;
+  --accent-foreground: #09090B;
+  --destructive: var(--pf-down);
+  --border: #E5E7EB;
+  --input: #E5E7EB;
+  --ring: #9CA3AF;
+
+  /* ── Chart palette ── */
+  --chart-1: #4338CA;
+  --chart-2: #059669;
+  --chart-3: #2563EB;
+  --chart-4: #D97706;
+  --chart-5: #DB2777;
+
+  /* ── Sidebar ── */
+  --sidebar: #F8F9FA;
+  --sidebar-foreground: #09090B;
+  --sidebar-primary: #09090B;
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent: #F1F3F5;
+  --sidebar-accent-foreground: #09090B;
+  --sidebar-border: #E5E7EB;
+  --sidebar-ring: #9CA3AF;
+
+  /* ── Rainbow button vars ── */
+  --color-1: #4338CA;
+  --color-2: #059669;
+  --color-3: #2563EB;
+  --color-4: #DB2777;
+  --color-5: #D97706;
+
+  /* ── Motion tokens ── */
+  --pf-duration-fast: 120ms;
+  --pf-duration-normal: 200ms;
+  --pf-duration-slow: 350ms;
+  --pf-ease: cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* ── BorderBeam — subtle in light mode ── */
+  --pf-beam-from: #4338CA;
+  --pf-beam-to: #059669;
+
+  /* ── Type scale ── */
+  --pf-text-2xs: 9px;
+  --pf-text-xs: 11px;
+  --pf-text-sm: 13px;
+  --pf-text-base: 15px;
+  --pf-text-lg: 17px;
+  --pf-text-xl: 20px;
+  --pf-text-2xl: 24px;
+  --pf-text-3xl: 30px;
+}
+
+/* ── Dark Theme — Refined, high-contrast, editorial ── */
+.dark {
+  --background: #09090B;
+  --foreground: #FAFAFA;
+
+  /* ── PythFeeds semantic (dark overrides) ── */
+  --pf-accent: #818CF8;
+  --pf-accent-muted: rgba(129, 140, 248, 0.10);
+  --pf-accent-hover: #A5B4FC;
+  --pf-up: #34D399;
+  --pf-up-muted: rgba(52, 211, 153, 0.10);
+  --pf-down: #F87171;
+  --pf-down-muted: rgba(248, 113, 113, 0.10);
+  --pf-warning: #FBBF24;
+  --pf-warning-muted: rgba(251, 191, 36, 0.08);
+  --pf-info: #60A5FA;
+  --pf-star: #FBBF24;
+  --pf-teal: #2DD4BF;
+
+  /* ── Backward-compat ── */
+  --cmc-blue: var(--pf-accent);
+  --cmc-blue-light: #A5B4FC;
+  --cmc-neutral-1: #0F1012;
+  --cmc-neutral-2: #18191D;
+  --cmc-neutral-3: #27272A;
+  --cmc-neutral-4: #3F3F46;
+  --cmc-neutral-5: #A1A1AA;
+  --cmc-neutral-6: #D4D4D8;
+  --cmc-neutral-7: #27272A;
+  --cmc-bg: #09090B;
+  --cmc-text: #FAFAFA;
+  --cmc-text-sub: #A1A1AA;
+  --cmc-border: rgba(255, 255, 255, 0.06);
+
+  /* ── shadcn primitives (dark) ── */
+  --card: #0F1012;
+  --card-foreground: #FAFAFA;
+  --popover: #0F1012;
+  --popover-foreground: #FAFAFA;
+  --primary: #FAFAFA;
+  --primary-foreground: #09090B;
+  --secondary: #18191D;
+  --secondary-foreground: #FAFAFA;
+  --muted: #18191D;
+  --muted-foreground: #71717A;
+  --accent: #18191D;
+  --accent-foreground: #FAFAFA;
+  --destructive: #EF4444;
+  --border: rgba(255, 255, 255, 0.06);
+  --input: rgba(255, 255, 255, 0.08);
+  --ring: #3F3F46;
+
+  /* ── Chart palette: vibrant on dark bg ── */
+  --chart-1: #818CF8;
+  --chart-2: #34D399;
+  --chart-3: #60A5FA;
+  --chart-4: #FBBF24;
+  --chart-5: #F472B6;
+
+  /* ── Sidebar ── */
+  --sidebar: #0F1012;
+  --sidebar-foreground: #FAFAFA;
+  --sidebar-primary: #818CF8;
+  --sidebar-primary-foreground: #FAFAFA;
+  --sidebar-accent: #18191D;
+  --sidebar-accent-foreground: #FAFAFA;
+  --sidebar-border: rgba(255, 255, 255, 0.06);
+  --sidebar-ring: #3F3F46;
+
+  /* ── Rainbow button ── */
+  --color-1: #818CF8;
+  --color-2: #34D399;
+  --color-3: #60A5FA;
+  --color-4: #F472B6;
+  --color-5: #FBBF24;
+
+  /* ── Beam brand colors ── */
+  --pf-beam-from: #818CF8;
+  --pf-beam-to: #34D399;
+}
+
+/* ═══════════════════════════════════════════════════════
+   Degen Mode — Trading terminal aesthetic
+   Near-black bg, amber/gold primary, monospace everything
+   Applied via html.degen class
+   ═══════════════════════════════════════════════════════ */
+.degen {
+  --pf-accent: #E5A100;
+  --pf-accent-muted: rgba(229, 161, 0, 0.10);
+  --pf-accent-hover: #F5B800;
+  --pf-star: #E5A100;
+  --pf-degen-secondary: #FF6B35;
+  --pf-teal: #34D399;
+
+  --cmc-blue: #E5A100;
+  --cmc-blue-light: #F5B800;
+
+  --pf-beam-from: #E5A100;
+  --pf-beam-to: #FF6B35;
+
+  --color-1: #E5A100;
+  --color-2: #FF6B35;
+  --color-3: #34D399;
+  --color-4: #60A5FA;
+  --color-5: #F472B6;
+}
+
+.degen.dark {
+  --pf-accent: #FBBF24;
+  --pf-accent-muted: rgba(251, 191, 36, 0.10);
+  --pf-accent-hover: #FCD34D;
+  --pf-degen-secondary: #FB923C;
+  --pf-teal: #34D399;
+
+  --cmc-bg: #050506;
+  --cmc-neutral-1: #0A0A0C;
+  --cmc-neutral-2: #111113;
+  --cmc-neutral-3: #1C1C1F;
+  --cmc-border: rgba(251, 191, 36, 0.06);
+
+  --background: #050506;
+  --card: #0A0A0C;
+  --border: rgba(251, 191, 36, 0.06);
+
+  --pf-beam-from: #FBBF24;
+  --pf-beam-to: #FB923C;
+
+  /* Degen chart palette — high contrast on near-black */
+  --chart-1: #FBBF24;
+  --chart-2: #FB923C;
+  --chart-3: #34D399;
+  --chart-4: #60A5FA;
+  --chart-5: #F472B6;
+}
+
+/* ── Degen density: tighter spacing globally ── */
+.degen .degen-compact {
+  --row-height: 34px;
+  --card-padding: 10px;
+}
+
+/* ── Degen: monospace data everywhere ── */
+.degen .font-data,
+.degen td,
+.degen .tabular-nums {
+  font-family: var(--font-jb-mono), ui-monospace, monospace;
+  font-feature-settings: "tnum" 1;
+}
+
+/* ── Degen scan-line overlay ── */
+.degen::after {
+  content: "";
+  pointer-events: none;
+  position: fixed;
+  inset: 0;
+  z-index: 99990;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(255, 212, 59, 0.012) 2px,
+    rgba(255, 212, 59, 0.012) 4px
+  );
+  opacity: 0;
+  transition: opacity 0.5s ease;
+}
+.degen.dark::after {
+  opacity: 1;
+}
+
+/* ── Degen: accent glow on interactive elements ── */
+.degen .card-interactive:hover {
+  border-color: color-mix(in srgb, var(--pf-accent) 40%, var(--cmc-border));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--pf-accent) 15%, transparent),
+              0 0 20px color-mix(in srgb, var(--pf-accent) 8%, transparent);
+}
+
+/* ── Degen: pulsing positive values ── */
+.degen .text-up {
+  text-shadow: 0 0 8px rgba(0, 229, 155, 0.3);
+}
+.degen .text-down {
+  text-shadow: 0 0 8px rgba(255, 107, 107, 0.3);
+}
+
+/* ═══════════════════════════════════════════════════════
+   Animations
+   ═══════════════════════════════════════════════════════ */
+
+@keyframes bellRing {
+  0%, 100% { transform-origin: top; }
+  15% { transform: rotateZ(10deg); }
+  30% { transform: rotateZ(-10deg); }
+  45% { transform: rotateZ(5deg); }
+  60% { transform: rotateZ(-5deg); }
+  75% { transform: rotateZ(2deg); }
+}
+
+@keyframes price-flash-up {
+  0% { background-color: var(--pf-up-muted); }
+  100% { background-color: transparent; }
+}
+@keyframes price-flash-down {
+  0% { background-color: var(--pf-down-muted); }
+  100% { background-color: transparent; }
+}
+.price-flash-up { animation: price-flash-up 0.8s ease-out; }
+.price-flash-down { animation: price-flash-down 0.8s ease-out; }
+
+/* Smooth theme crossfade — toggled on during theme switch */
+.theme-transition,
+.theme-transition *,
+.theme-transition *::before,
+.theme-transition *::after {
+  transition: background-color var(--pf-duration-slow) var(--pf-ease),
+              color var(--pf-duration-normal) var(--pf-ease),
+              border-color var(--pf-duration-slow) var(--pf-ease),
+              box-shadow var(--pf-duration-slow) var(--pf-ease) !important;
+}
+
+/* Mode switch flash overlay */
+@keyframes mode-flash-in {
+  0% { opacity: 1; }
+  100% { opacity: 0; }
+}
+.mode-flash {
+  pointer-events: none;
+  position: fixed;
+  inset: 0;
+  z-index: 99999;
+  animation: mode-flash-in 0.5s ease-out forwards;
+}
+.mode-flash-degen { background: rgba(240, 185, 11, 0.15); }
+.mode-flash-standard { background: rgba(139, 92, 246, 0.08); }
+
+/* ── Degen strip glow pulse ── */
+@keyframes degen-strip-glow {
+  0%, 100% { opacity: 0.7; filter: blur(0px); }
+  50% { opacity: 1; filter: blur(1px); }
+}
+
+/* ═══════════════════════════════════════════════════════
+   Utility classes
+   ═══════════════════════════════════════════════════════ */
+
+/* Monospace data font for numbers/prices */
+.font-data {
+  font-family: var(--font-jb-mono), ui-monospace, monospace;
+  font-feature-settings: "tnum" 1;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Display font for headings — Syne for distinctive character */
+.font-display {
+  font-family: var(--font-syne), var(--font-geist-sans), system-ui, sans-serif;
+  letter-spacing: -0.03em;
+  font-weight: 700;
+}
+
+/* Accent text */
+.text-accent-brand { color: var(--pf-accent); }
+.bg-accent-brand { background: var(--pf-accent); }
+.bg-accent-muted { background: var(--pf-accent-muted); }
+
+/* Signal colors */
+.text-up { color: var(--pf-up); }
+.text-down { color: var(--pf-down); }
+.bg-up-muted { background: var(--pf-up-muted); }
+.bg-down-muted { background: var(--pf-down-muted); }
+
+/* Surface hover that works in both light and dark */
+.hover-surface:hover { background: var(--cmc-neutral-1); }
+
+/* ═══════════════════════════════════════════════════════
+   Card system — elevation & interactivity
+   ═══════════════════════════════════════════════════════ */
+
+.card-elevated {
+  background: var(--cmc-neutral-1);
+  border: 1px solid var(--cmc-border);
+  border-radius: 12px;
+  transition: transform var(--pf-duration-normal) var(--pf-ease),
+              box-shadow var(--pf-duration-normal) var(--pf-ease),
+              border-color var(--pf-duration-normal) var(--pf-ease);
+}
+
+.card-elevated:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.08), 0 0 0 1px rgba(139,92,246,0.06);
+}
+
+.dark .card-elevated:hover {
+  box-shadow: 0 4px 24px rgba(0,0,0,0.3), 0 0 0 1px rgba(139,92,246,0.08);
+}
+
+/* Interactive card with accent border on hover */
+.card-interactive {
+  background: var(--cmc-neutral-1);
+  border: 1px solid var(--cmc-border);
+  border-radius: 12px;
+  transition: all var(--pf-duration-normal) var(--pf-ease);
+}
+
+.card-interactive:hover {
+  border-color: color-mix(in srgb, var(--pf-accent) 30%, var(--cmc-border));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--pf-accent) 8%, transparent),
+              0 4px 12px rgba(0,0,0,0.06);
+  transform: translateY(-1px);
+}
+
+.dark .card-interactive:hover {
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--pf-accent) 12%, transparent),
+              0 4px 20px rgba(0,0,0,0.25);
+}
+
+/* ═══════════════════════════════════════════════════════
+   Custom scrollbar — thin & themed
+   ═══════════════════════════════════════════════════════ */
+
+/* Webkit (Chrome, Edge, Safari) */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--cmc-neutral-3);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--cmc-neutral-4);
+}
+.dark ::-webkit-scrollbar-thumb {
+  background: var(--cmc-neutral-3);
+}
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: var(--cmc-neutral-4);
+}
+
+/* Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--cmc-neutral-3) transparent;
+}
+
+/* ═══════════════════════════════════════════════════════
+   Page transition animation
+   ═══════════════════════════════════════════════════════ */
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in-up {
+  animation: fadeInUp 0.35s var(--pf-ease) both;
+}
+
+/* Stagger children */
+.stagger-children > * {
+  animation: fadeInUp 0.35s var(--pf-ease) both;
+}
+.stagger-children > *:nth-child(1) { animation-delay: 0ms; }
+.stagger-children > *:nth-child(2) { animation-delay: 50ms; }
+.stagger-children > *:nth-child(3) { animation-delay: 100ms; }
+.stagger-children > *:nth-child(4) { animation-delay: 150ms; }
+.stagger-children > *:nth-child(5) { animation-delay: 200ms; }
+.stagger-children > *:nth-child(6) { animation-delay: 250ms; }
+
+/* ═══════════════════════════════════════════════════════
+   Button polish — consistent hover glow
+   ═══════════════════════════════════════════════════════ */
+
+.btn-accent {
+  background: var(--pf-accent);
+  color: #fff;
+  border-radius: 8px;
+  font-weight: 600;
+  transition: all var(--pf-duration-normal) var(--pf-ease);
+}
+.btn-accent:hover {
+  background: var(--pf-accent-hover);
+  box-shadow: 0 4px 16px color-mix(in srgb, var(--pf-accent) 30%, transparent);
+  transform: translateY(-1px);
+}
+.btn-accent:active {
+  transform: scale(0.98);
+}
+
+/* Ghost button with accent hover */
+.btn-ghost {
+  background: transparent;
+  color: var(--cmc-neutral-5);
+  border: 1px solid var(--cmc-border);
+  border-radius: 8px;
+  font-weight: 500;
+  transition: all var(--pf-duration-normal) var(--pf-ease);
+}
+.btn-ghost:hover {
+  color: var(--cmc-text);
+  border-color: color-mix(in srgb, var(--pf-accent) 40%, var(--cmc-border));
+  background: var(--pf-accent-muted);
+}
+
+/* ═══════════════════════════════════════════════════════
+   Gradient divider for section headers
+   ═══════════════════════════════════════════════════════ */
+
+.gradient-divider {
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--pf-accent) 20%, var(--cmc-border)) 50%,
+    transparent
+  );
+}
+
+/* ═══════════════════════════════════════════════════════
+   Global micro-interactions
+   ═══════════════════════════════════════════════════════ */
+
+@keyframes fade-in-up {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes count-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.04); }
+}
+
+@keyframes price-flash-green {
+  0% { background-color: rgba(0, 229, 155, 0.15); }
+  100% { background-color: transparent; }
+}
+
+@keyframes price-flash-red {
+  0% { background-color: rgba(255, 107, 107, 0.15); }
+  100% { background-color: transparent; }
+}
+
+.animate-fade-in-up {
+  animation: fade-in-up 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.animate-count-pulse {
+  animation: count-pulse 0.3s ease-out;
+}
+
+.price-flash-up {
+  animation: price-flash-green 0.6s ease-out;
+}
+
+.price-flash-down {
+  animation: price-flash-red 0.6s ease-out;
+}
+
+/* Staggered grid children */
+.stagger-grid > * {
+  animation: fade-in-up 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.stagger-grid > *:nth-child(1) { animation-delay: 0ms; }
+.stagger-grid > *:nth-child(2) { animation-delay: 40ms; }
+.stagger-grid > *:nth-child(3) { animation-delay: 80ms; }
+.stagger-grid > *:nth-child(4) { animation-delay: 120ms; }
+.stagger-grid > *:nth-child(5) { animation-delay: 160ms; }
+.stagger-grid > *:nth-child(6) { animation-delay: 200ms; }
+
+/* Button press micro-interaction */
+.press-scale {
+  transition: transform 120ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+.press-scale:active {
+  transform: scale(0.97);
+}
+
+/* Card hover lift */
+.card-lift {
+  transition: transform 200ms cubic-bezier(0.4, 0, 0.2, 1), box-shadow 200ms ease;
+}
+.card-lift:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+}
+
+/* Sliding tab indicator */
+.tab-indicator {
+  position: relative;
+}
+.tab-indicator::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  width: 0;
+  height: 2px;
+  background: var(--pf-accent);
+  border-radius: 9999px;
+  transition: width 200ms ease, left 200ms ease;
+}
+.tab-indicator[data-active="true"]::after {
+  width: 60%;
+  left: 20%;
+}
+
+/* Marquee infinite scroll */
+@keyframes marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(calc(-100% - var(--gap))); }
+}
+@keyframes marquee-vertical {
+  from { transform: translateY(0); }
+  to { transform: translateY(calc(-100% - var(--gap))); }
+}
+.animate-marquee {
+  animation: marquee var(--duration) linear infinite;
+}
+.animate-marquee-vertical {
+  animation: marquee-vertical var(--duration) linear infinite;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
