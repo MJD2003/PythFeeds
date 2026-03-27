@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
-import { Unlock, Clock, AlertTriangle, DollarSign, LayoutGrid, Table2, ArrowUpDown, TrendingDown } from "lucide-react";
+import { useState, useEffect, useMemo, useCallback } from "react";
+import { Unlock, Clock, AlertTriangle, DollarSign, LayoutGrid, Table2, ArrowUpDown, TrendingDown, RefreshCw } from "lucide-react";
 import { MagicCard } from "@/Components/magicui/magic-card";
 import { BorderBeam } from "@/Components/magicui/border-beam";
 import { fetchCoinsByIds } from "@/lib/api/backend";
@@ -88,23 +88,30 @@ export default function UnlocksPage() {
   const [sortBy, setSortBy] = useState<SortBy>("date");
   const categories = ["All", "cliff", "linear", "team", "investor", "ecosystem"];
 
-  // Fetch real-time prices AND images via backend proxy
-  useEffect(() => {
+  const fetchPricesAndLogos = useCallback(async (retry = 0) => {
+    setLoadingPrices(true);
     const ids = UNLOCK_DATA.map(u => u.cgId);
-    fetchCoinsByIds(ids)
-      .then((data) => {
-        const priceMap: Record<string, number> = {};
-        const logoMap: Record<string, string> = {};
-        for (const coin of data) {
-          priceMap[coin.id] = coin.current_price || 0;
-          if (coin.image) logoMap[coin.id] = coin.image;
-        }
-        setPrices(priceMap);
-        setLogos(logoMap);
-      })
-      .catch(() => {})
-      .finally(() => setLoadingPrices(false));
+    try {
+      const data = await fetchCoinsByIds(ids);
+      const priceMap: Record<string, number> = {};
+      const logoMap: Record<string, string> = {};
+      for (const coin of data) {
+        priceMap[coin.id] = coin.current_price || 0;
+        if (coin.image) logoMap[coin.id] = coin.image;
+      }
+      setPrices(priceMap);
+      setLogos(logoMap);
+    } catch {
+      if (retry < 2) {
+        setTimeout(() => fetchPricesAndLogos(retry + 1), 3000 * (retry + 1));
+        return;
+      }
+    } finally {
+      setLoadingPrices(false);
+    }
   }, []);
+
+  useEffect(() => { fetchPricesAndLogos(); }, [fetchPricesAndLogos]);
 
   const filtered = useMemo(() => {
     const arr = catFilter === "All" ? UNLOCK_DATA : UNLOCK_DATA.filter(u => u.category === catFilter);

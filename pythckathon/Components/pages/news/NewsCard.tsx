@@ -48,7 +48,8 @@ export default function NewsCard({ article, sentiment, sStyle, timeAgo, thumb }:
         {/* Thumbnail */}
         {thumb && (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={thumb} alt="" className="w-full h-32 object-cover" style={{ borderBottom: "1px solid var(--cmc-border)" }} />
+          <img src={thumb} alt="" className="w-full h-32 object-cover" style={{ borderBottom: "1px solid var(--cmc-border)" }}
+            onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
         )}
         <div className="flex-1 p-4 flex flex-col">
           {/* Meta row */}

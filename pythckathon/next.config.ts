@@ -3,22 +3,20 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   images: {
     remotePatterns: [
-      {
-        protocol: "https",
-        hostname: "assets.coingecko.com",
-      },
-      {
-        protocol: "https",
-        hostname: "coin-images.coingecko.com",
-      },
-      {
-        protocol: "https",
-        hostname: "logo.clearbit.com",
-      },
-      {
-        protocol: "https",
-        hostname: "www.google.com",
-      },
+      { protocol: "https", hostname: "assets.coingecko.com" },
+      { protocol: "https", hostname: "coin-images.coingecko.com" },
+      { protocol: "https", hostname: "logo.clearbit.com" },
+      { protocol: "https", hostname: "www.google.com" },
+      { protocol: "https", hostname: "assets.coincap.io" },
+      { protocol: "https", hostname: "flagcdn.com" },
+      { protocol: "https", hostname: "raw.githubusercontent.com" },
+      { protocol: "https", hostname: "avatars.githubusercontent.com" },
+      { protocol: "https", hostname: "static.jup.ag" },
+      { protocol: "https", hostname: "storage.googleapis.com" },
+      { protocol: "https", hostname: "arweave.net" },
+      { protocol: "https", hostname: "**.pyth.network" },
+      { protocol: "https", hostname: "app.meteora.ag" },
+      { protocol: "https", hostname: "metadata.jito.network" },
     ],
     formats: ["image/avif", "image/webp"],
     minimumCacheTTL: 3600,

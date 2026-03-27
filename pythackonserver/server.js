@@ -32,6 +32,7 @@ const app = express();
 const PORT = process.env.PORT || 4000;
 const startTime = Date.now();
 
+app.set("trust proxy", 1);
 app.use(cors({ origin: process.env.FRONTEND_URL || "http://localhost:3000" }));
 app.use(compression());
 app.use(express.json());
@@ -39,7 +40,7 @@ app.use(express.json());
 // Rate limiting
 const aiLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 20,
+  max: 30,
   standardHeaders: true,
   handler: (req, res) => {
     const retryAfter = Math.ceil((req.rateLimit?.resetTime - Date.now()) / 1000) || 60;
@@ -48,8 +49,9 @@ const aiLimiter = rateLimit({
 });
 const generalLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 120,
+  max: 300,
   standardHeaders: true,
+  skip: (req) => req.path.includes("/stream/sse") || req.path === "/health",
   handler: (req, res) => {
     const retryAfter = Math.ceil((req.rateLimit?.resetTime - Date.now()) / 1000) || 60;
     res.status(429).json({ error: "Too many requests", retryAfter, message: `Please wait ${retryAfter} seconds` });

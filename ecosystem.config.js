@@ -4,7 +4,7 @@ module.exports = {
       name: "pythfeeds-backend",
       cwd: "./pythackonserver",
       script: "server.js",
-      instances: 1,
+      exec_mode: "fork",
       autorestart: true,
       max_memory_restart: "512M",
       env: {
@@ -18,7 +18,7 @@ module.exports = {
       cwd: "./pythckathon",
       script: "node_modules/.bin/next",
       args: "start",
-      instances: 1,
+      exec_mode: "fork",
       autorestart: true,
       max_memory_restart: "1G",
       env: {

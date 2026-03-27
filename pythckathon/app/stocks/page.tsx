@@ -110,9 +110,9 @@ export default function StocksPage() {
   const [pythPage, setPythPage] = useState(0);
   const PYTH_PAGE_SIZE = 40;
 
-  // Feed detail modal
-  const [selectedFeed, setSelectedFeed] = useState<PythFeedMeta | null>(null);
-  const [copiedFeedId, setCopiedFeedId] = useState(false);
+  // Pyth tab sort
+  const [pythSortKey, setPythSortKey] = useState<"price" | "confidence" | null>(null);
+  const [pythSortDir, setPythSortDir] = useState<SortDir>("desc");
 
   // Sort state
   const [sortKey, setSortKey] = useState<SortKey>(null);
@@ -487,20 +487,62 @@ export default function StocksPage() {
           if (!q) return true;
           return f.base.toLowerCase().includes(q) || f.displaySymbol.toLowerCase().includes(q) || f.description.toLowerCase().includes(q);
         });
-        const totalPages = Math.ceil(filtered.length / PYTH_PAGE_SIZE);
+
+        const pythSorted = (() => {
+          if (!pythSortKey) return filtered;
+          return [...filtered].sort((a, b) => {
+            const pa = pythPrices[a.id];
+            const pb = pythPrices[b.id];
+            if (pythSortKey === "price") {
+              const va = pa?.price ?? 0;
+              const vb = pb?.price ?? 0;
+              return pythSortDir === "desc" ? vb - va : va - vb;
+            }
+            const ca = pa && pa.price > 0 ? (pa.confidence / pa.price) * 100 : 999;
+            const cb = pb && pb.price > 0 ? (pb.confidence / pb.price) * 100 : 999;
+            return pythSortDir === "desc" ? cb - ca : ca - cb;
+          });
+        })();
+
+        const totalPages = Math.ceil(pythSorted.length / PYTH_PAGE_SIZE);
         const page = Math.min(pythPage, Math.max(0, totalPages - 1));
-        const sliced = filtered.slice(page * PYTH_PAGE_SIZE, (page + 1) * PYTH_PAGE_SIZE);
+        const sliced = pythSorted.slice(page * PYTH_PAGE_SIZE, (page + 1) * PYTH_PAGE_SIZE);
         const priced = Object.keys(pythPrices).length;
+
+        const handlePythSort = (key: "price" | "confidence") => {
+          if (pythSortKey === key) setPythSortDir(d => d === "desc" ? "asc" : "desc");
+          else { setPythSortKey(key); setPythSortDir("desc"); }
+        };
+
+        const fmtAmt = (v: number, quote?: string) => {
+          if (quote === "JPY") return `¥${v.toLocaleString()}`;
+          if (v >= 10000) return `$${v.toLocaleString("en-US", { maximumFractionDigits: 2 })}`;
+          if (v >= 1) return `$${v.toFixed(2)}`;
+          if (v >= 0.001) return `$${v.toFixed(4)}`;
+          if (v >= 0.000001) return `$${v.toFixed(6)}`;
+          return `$${v.toFixed(8)}`;
+        };
+
+        const assetTabKey = currentTab === "metals" ? "metals" : currentTab === "commodities" ? "commodities" : currentTab === "forex" ? "forex" : null;
 
         return (
           <>
             {/* Stats + Search */}
-            <div className="mt-3 flex flex-col sm:flex-row sm:items-center gap-2">
-              <div className="flex items-center gap-2 text-xs" style={{ color: "var(--cmc-neutral-5)" }}>
-                <span className="font-semibold" style={{ color: "var(--cmc-text)" }}>{pythFeeds.length}</span> feeds discovered
-                <span className="text-[10px]">&bull;</span>
-                <span className="font-semibold" style={{ color: "#16c784" }}>{priced}</span> priced
-              </div>
+            <div className="mt-3 grid grid-cols-2 gap-2.5 sm:grid-cols-4 stagger-grid">
+              {[
+                { label: "Total Feeds", value: String(pythFeeds.length), color: "var(--cmc-text)" },
+                { label: "Priced", value: String(priced), color: "#16c784" },
+                { label: "Streaming", value: pythStreaming ? "Live" : "Connecting", color: pythStreaming ? "#16c784" : "#f5d100" },
+                { label: "Updated", value: `${elapsed}s ago`, color: "var(--cmc-neutral-5)" },
+              ].map(s => (
+                <div key={s.label} className="card-interactive rounded-xl p-3">
+                  <p className="text-[10px] font-medium" style={{ color: "var(--cmc-neutral-5)" }}>{s.label}</p>
+                  <p className="text-sm font-bold font-data" style={{ color: s.color }}>{s.value}</p>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-4 flex flex-col sm:flex-row sm:items-center gap-2">
               <div className="sm:ml-auto relative">
                 <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "var(--cmc-neutral-5)" }} />
                 <input value={pythSearch} onChange={(e) => { setPythSearch(e.target.value); setPythPage(0); }}
@@ -515,68 +557,94 @@ export default function StocksPage() {
                 <Loader2 size={20} className="animate-spin" />
                 <span className="text-sm">Discovering Pyth {tabTitle} feeds...</span>
               </div>
-            ) : filtered.length === 0 ? (
+            ) : pythSorted.length === 0 ? (
               <div className="mt-6 py-16 text-center text-sm rounded-xl" style={{ color: "var(--cmc-neutral-5)", border: "1px dashed var(--cmc-border)" }}>
                 {pythSearch ? `No ${tabTitle} feeds match "${pythSearch}"` : `No ${tabTitle} feeds available.`}
               </div>
             ) : (
-              <div className="mt-4 mx-auto w-full max-w-6xl grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                {sliced.map((feed) => {
-                  const p = pythPrices[feed.id];
-                  const confPct = p && p.price > 0 ? (p.confidence / p.price) * 100 : 0;
-                  const fmtAmt = (v: number) => {
-                    if (feed.quoteCurrency === "JPY") return `¥${v.toLocaleString()}`;
-                    if (v >= 10000) return `$${v.toLocaleString("en-US", { maximumFractionDigits: 2 })}`;
-                    if (v >= 1) return `$${v.toFixed(2)}`;
-                    if (v >= 0.001) return `$${v.toFixed(4)}`;
-                    if (v >= 0.000001) return `$${v.toFixed(6)}`;
-                    return `$${v.toFixed(8)}`;
-                  };
-                  const barColor = confPct < 0.01 ? "#16c784" : confPct < 0.05 ? "var(--pf-teal)" : confPct < 0.1 ? "#f5d100" : "#ea3943";
-                  const age = p ? Math.max(0, Math.floor(Date.now() / 1000) - p.publishTime) : null;
-                  return (
-                    <div key={feed.id} className="rounded-xl p-4 transition-all hover:-translate-y-px group cursor-pointer"
-                      onClick={() => setSelectedFeed(feed)}
-                      style={{ border: "1px solid var(--cmc-border)", background: "var(--cmc-neutral-1)" }}>
-                      <div className="flex items-center justify-between mb-3">
-                        <div className="flex items-center gap-2.5">
-                          <FeedIcon base={feed.base} assetType={feed.assetType} size={32} />
-                          <div className="min-w-0">
-                            <p className="text-sm font-bold leading-none truncate" style={{ color: "var(--cmc-text)" }}>{feed.displaySymbol}</p>
-                            <p className="text-[10px] mt-0.5 leading-none truncate" style={{ color: "var(--cmc-neutral-5)" }}>
-                              {feed.description.split(" / ")[0]?.split(" ").map(w => w.charAt(0) + w.slice(1).toLowerCase()).join(" ")}
-                            </p>
-                          </div>
-                        </div>
-                        {age !== null && (
-                          <span className="text-[9px] font-mono px-1.5 py-0.5 rounded-full" style={{ background: age < 10 ? "rgba(22,199,132,0.1)" : "rgba(245,209,0,0.1)", color: age < 10 ? "#16c784" : "#f5d100" }}>
-                            {age < 60 ? `${age}s` : `${Math.floor(age / 60)}m`}
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex items-end justify-between">
-                        <p className="text-lg font-bold tabular-nums" style={{ color: "var(--cmc-text)" }}>
-                          {p ? fmtAmt(p.price) : "—"}
-                        </p>
-                        {p && p.confidence > 0 && (
-                          <div className="text-right">
-                            <p className="text-[9px] font-mono" style={{ color: barColor }}>±{confPct.toFixed(4)}%</p>
-                          </div>
-                        )}
-                      </div>
-                      {/* Confidence bar */}
-                      <div className="mt-2.5">
-                        <div className="h-1 rounded-full" style={{ background: "var(--cmc-neutral-2)" }}>
-                          <div className="h-full rounded-full transition-all duration-300" style={{ width: `${Math.min(confPct * 1000, 100)}%`, background: barColor }} />
-                        </div>
-                      </div>
-                      {/* Feed ID */}
-                      <p className="mt-2 text-[8px] font-mono truncate opacity-0 group-hover:opacity-60 transition-opacity" style={{ color: "var(--cmc-neutral-5)" }}>
-                        0x{feed.id.slice(0, 8)}…{feed.id.slice(-6)}
-                      </p>
-                    </div>
-                  );
-                })}
+              <div className="mt-4 overflow-x-auto rounded-xl" style={{ border: "1px solid var(--cmc-border)", boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
+                <table className="w-full border-collapse text-sm">
+                  <thead>
+                    <tr style={{ borderBottom: "1px solid var(--cmc-border)" }}>
+                      <th className="px-2 py-3 text-left text-xs font-semibold" style={{ color: "var(--cmc-neutral-5)", background: "var(--cmc-bg)" }}>#</th>
+                      <th className="px-2 py-3 text-left text-xs font-semibold" style={{ color: "var(--cmc-neutral-5)", background: "var(--cmc-bg)" }}>Name</th>
+                      <th className="px-2 py-3 text-right text-xs font-semibold cursor-pointer select-none hover:text-(--pf-accent) transition-colors"
+                        style={{ color: pythSortKey === "price" ? "var(--pf-accent)" : "var(--cmc-neutral-5)", background: "var(--cmc-bg)" }}
+                        onClick={() => handlePythSort("price")}>
+                        <span className="inline-flex items-center gap-0.5">
+                          Price
+                          {pythSortKey === "price" ? (pythSortDir === "desc" ? <ChevronDown size={10} /> : <ChevronUp size={10} />) : <ArrowUpDown size={8} className="opacity-30" />}
+                        </span>
+                      </th>
+                      <th className="hidden sm:table-cell px-2 py-3 text-right text-xs font-semibold cursor-pointer select-none hover:text-(--pf-accent) transition-colors"
+                        style={{ color: pythSortKey === "confidence" ? "var(--pf-accent)" : "var(--cmc-neutral-5)", background: "var(--cmc-bg)" }}
+                        onClick={() => handlePythSort("confidence")}>
+                        <span className="inline-flex items-center gap-0.5">
+                          Confidence
+                          {pythSortKey === "confidence" ? (pythSortDir === "desc" ? <ChevronDown size={10} /> : <ChevronUp size={10} />) : <ArrowUpDown size={8} className="opacity-30" />}
+                        </span>
+                      </th>
+                      <th className="hidden md:table-cell px-2 py-3 text-center text-xs font-semibold" style={{ color: "var(--cmc-neutral-5)", background: "var(--cmc-bg)" }}>Status</th>
+                      <th className="hidden lg:table-cell px-2 py-3 text-center text-xs font-semibold" style={{ color: "var(--cmc-neutral-5)", background: "var(--cmc-bg)" }}>Quote</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sliced.map((feed, idx) => {
+                      const p = pythPrices[feed.id];
+                      const confPct = p && p.price > 0 ? (p.confidence / p.price) * 100 : 0;
+                      const barColor = confPct < 0.01 ? "#16c784" : confPct < 0.05 ? "var(--pf-teal)" : confPct < 0.1 ? "#f5d100" : "#ea3943";
+                      const age = p ? Math.max(0, Math.floor(Date.now() / 1000) - p.publishTime) : null;
+                      const detailHref = assetTabKey ? `/stocks/asset/${encodeURIComponent(feed.base)}` : `/coins/${feed.base.toLowerCase()}`;
+
+                      return (
+                        <tr key={feed.id} className="group transition-colors cursor-pointer" style={{ borderBottom: "1px solid var(--cmc-border)" }}
+                          onMouseEnter={(e) => e.currentTarget.style.background = "var(--cmc-neutral-1)"}
+                          onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}>
+                          <td className="px-2 py-3 text-xs font-medium" style={{ color: "var(--cmc-text-sub)" }}>{page * PYTH_PAGE_SIZE + idx + 1}</td>
+                          <td className="px-2 py-3">
+                            <Link href={detailHref} className="flex items-center gap-2.5 hover:opacity-80">
+                              <FeedIcon base={feed.base} assetType={feed.assetType} size={32} />
+                              <div className="min-w-0">
+                                <span className="text-sm font-semibold truncate block" style={{ color: "var(--cmc-text)" }}>
+                                  {feed.description.split(" / ")[0]?.split(" ").map(w => w.charAt(0) + w.slice(1).toLowerCase()).join(" ")}
+                                </span>
+                                <span className="text-[11px]" style={{ color: "var(--cmc-neutral-5)" }}>{feed.displaySymbol}</span>
+                              </div>
+                            </Link>
+                          </td>
+                          <td className="px-2 py-3 text-right">
+                            <span className="text-sm font-semibold tabular-nums" style={{ color: "var(--cmc-text)" }}>
+                              {p ? fmtAmt(p.price, feed.quoteCurrency) : "—"}
+                            </span>
+                          </td>
+                          <td className="hidden sm:table-cell px-2 py-3 text-right">
+                            {p && p.confidence > 0 ? (
+                              <div className="flex items-center justify-end gap-2">
+                                <span className="text-[10px] font-mono tabular-nums" style={{ color: barColor }}>±{confPct.toFixed(4)}%</span>
+                                <div className="w-12 h-1.5 rounded-full overflow-hidden" style={{ background: "var(--cmc-neutral-2)" }}>
+                                  <div className="h-full rounded-full transition-all duration-300" style={{ width: `${Math.min(confPct * 1000, 100)}%`, background: barColor }} />
+                                </div>
+                              </div>
+                            ) : (
+                              <span className="text-xs" style={{ color: "var(--cmc-neutral-5)" }}>—</span>
+                            )}
+                          </td>
+                          <td className="hidden md:table-cell px-2 py-3 text-center">
+                            <span className="inline-flex rounded-full px-2 py-0.5 text-[10px] font-medium" style={{
+                              background: age !== null && age < 60 ? "rgba(22,199,132,0.12)" : "rgba(245,209,0,0.12)",
+                              color: age !== null && age < 60 ? "#16c784" : "#f5d100",
+                            }}>
+                              {age !== null ? (age < 60 ? "Live" : `${Math.floor(age / 60)}m ago`) : "Offline"}
+                            </span>
+                          </td>
+                          <td className="hidden lg:table-cell px-2 py-3 text-center text-xs" style={{ color: "var(--cmc-neutral-5)" }}>
+                            {feed.quoteCurrency || "USD"}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
             )}
 
@@ -600,118 +668,10 @@ export default function StocksPage() {
             )}
 
             <div className="mt-3 flex items-center justify-between text-xs" style={{ color: "var(--cmc-neutral-5)" }}>
-              <span>Showing {sliced.length} of {filtered.length} {tabTitle} feeds &bull; Updated {elapsed}s ago</span>
+              <span>Showing {sliced.length} of {pythSorted.length} {tabTitle} feeds {pythSortKey && `· sorted by ${pythSortKey}`}</span>
               <span>Powered by <span className="font-semibold" style={{ color: "var(--pf-accent)" }}>Pyth Network</span> Hermes</span>
             </div>
           </>
-        );
-      })()}
-      {/* Pyth Feed Detail Modal */}
-      {selectedFeed && (() => {
-        const p = pythPrices[selectedFeed.id];
-        const confPct = p && p.price > 0 ? (p.confidence / p.price) * 100 : 0;
-        const fmtAmt = (v: number) => {
-          if (selectedFeed.quoteCurrency === "JPY") return `¥${v.toLocaleString()}`;
-          if (v >= 10000) return `$${v.toLocaleString("en-US", { maximumFractionDigits: 2 })}`;
-          if (v >= 1) return `$${v.toFixed(2)}`;
-          if (v >= 0.001) return `$${v.toFixed(4)}`;
-          return `$${v.toFixed(8)}`;
-        };
-        const barColor = confPct < 0.01 ? "#16c784" : confPct < 0.05 ? "var(--pf-teal)" : confPct < 0.1 ? "#f5d100" : "#ea3943";
-        const age = p ? Math.max(0, Math.floor(Date.now() / 1000) - p.publishTime) : null;
-        return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.6)" }} onClick={() => { setSelectedFeed(null); setCopiedFeedId(false); }}>
-            <div className="w-full max-w-md rounded-2xl overflow-hidden" style={{ background: "var(--cmc-bg)", border: "1px solid var(--cmc-border)" }} onClick={e => e.stopPropagation()}>
-              {/* Header */}
-              <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: "1px solid var(--cmc-border)", background: "var(--cmc-neutral-1)" }}>
-                <div className="flex items-center gap-3">
-                  <FeedIcon base={selectedFeed.base} assetType={selectedFeed.assetType} size={36} />
-                  <div>
-                    <h3 className="text-base font-bold" style={{ color: "var(--cmc-text)" }}>{selectedFeed.displaySymbol}</h3>
-                    <p className="text-[11px]" style={{ color: "var(--cmc-neutral-5)" }}>
-                      {selectedFeed.description.split(" / ")[0]?.split(" ").map(w => w.charAt(0) + w.slice(1).toLowerCase()).join(" ")}
-                    </p>
-                  </div>
-                </div>
-                <button onClick={() => { setSelectedFeed(null); setCopiedFeedId(false); }} className="p-1 rounded-full hover:bg-white/5">
-                  <XIcon size={16} style={{ color: "var(--cmc-neutral-5)" }} />
-                </button>
-              </div>
-
-              {/* Price */}
-              <div className="px-5 py-4">
-                <div className="flex items-end justify-between mb-4">
-                  <div>
-                    <p className="text-[10px] font-medium uppercase" style={{ color: "var(--cmc-neutral-5)" }}>Current Price</p>
-                    <p className="text-3xl font-bold tabular-nums mt-1" style={{ color: "var(--cmc-text)" }}>
-                      {p ? fmtAmt(p.price) : "—"}
-                    </p>
-                  </div>
-                  {age !== null && (
-                    <span className="text-[10px] font-semibold px-2 py-1 rounded-full" style={{ background: age < 10 ? "rgba(22,199,132,0.1)" : "rgba(245,209,0,0.1)", color: age < 10 ? "#16c784" : "#f5d100" }}>
-                      Updated {age < 60 ? `${age}s` : `${Math.floor(age / 60)}m`} ago
-                    </span>
-                  )}
-                </div>
-
-                {/* Confidence band */}
-                {p && p.confidence > 0 && (
-                  <div className="mb-4">
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-[10px] font-medium" style={{ color: "var(--cmc-neutral-5)" }}>Confidence Interval</span>
-                      <span className="text-[10px] font-bold" style={{ color: barColor }}>±{confPct.toFixed(4)}%</span>
-                    </div>
-                    <div className="relative h-8 rounded-lg overflow-hidden" style={{ background: "var(--cmc-neutral-2)" }}>
-                      <div className="absolute top-0 bottom-0 rounded-lg opacity-25" style={{ left: `${Math.max(50 - confPct * 500, 5)}%`, right: `${Math.max(50 - confPct * 500, 5)}%`, background: barColor }} />
-                      <div className="absolute top-0 bottom-0 w-0.5 left-1/2 -translate-x-1/2" style={{ background: "var(--cmc-text)" }} />
-                      <div className="absolute inset-0 flex items-center justify-between px-3">
-                        <span className="text-[9px] font-mono tabular-nums" style={{ color: "var(--cmc-neutral-5)" }}>{fmtAmt(p.price - p.confidence)}</span>
-                        <span className="text-xs font-bold tabular-nums" style={{ color: "var(--cmc-text)" }}>{fmtAmt(p.price)}</span>
-                        <span className="text-[9px] font-mono tabular-nums" style={{ color: "var(--cmc-neutral-5)" }}>{fmtAmt(p.price + p.confidence)}</span>
-                      </div>
-                    </div>
-                    <div className="h-1.5 rounded-full mt-2" style={{ background: "var(--cmc-neutral-2)" }}>
-                      <div className="h-full rounded-full transition-all duration-300" style={{ width: `${Math.min(confPct * 1000, 100)}%`, background: barColor }} />
-                    </div>
-                  </div>
-                )}
-
-                {/* Detail grid */}
-                <div className="grid grid-cols-2 gap-3">
-                  {[
-                    { label: "Asset Type", value: selectedFeed.assetType },
-                    { label: "Quote Currency", value: selectedFeed.quoteCurrency || "USD" },
-                    { label: "Base", value: selectedFeed.base },
-                    { label: "Status", value: age !== null ? (age < 60 ? "Live" : "Stale") : "Offline" },
-                  ].map(d => (
-                    <div key={d.label} className="rounded-lg px-3 py-2" style={{ background: "var(--cmc-neutral-1)" }}>
-                      <p className="text-[9px] font-medium uppercase" style={{ color: "var(--cmc-neutral-5)" }}>{d.label}</p>
-                      <p className="text-xs font-semibold mt-0.5" style={{ color: "var(--cmc-text)" }}>{d.value}</p>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Feed ID */}
-                <div className="mt-3 rounded-lg px-3 py-2" style={{ background: "var(--cmc-neutral-1)" }}>
-                  <p className="text-[9px] font-medium uppercase mb-1" style={{ color: "var(--cmc-neutral-5)" }}>Pyth Feed ID</p>
-                  <div className="flex items-center justify-between">
-                    <p className="text-[10px] font-mono truncate mr-2" style={{ color: "var(--cmc-text)" }}>0x{selectedFeed.id}</p>
-                    <button onClick={() => { navigator.clipboard.writeText(`0x${selectedFeed.id}`); setCopiedFeedId(true); setTimeout(() => setCopiedFeedId(false), 2000); }}
-                      className="shrink-0 rounded-md px-2 py-1 text-[10px] font-semibold transition-colors"
-                      style={{ background: copiedFeedId ? "rgba(22,199,132,0.1)" : "var(--cmc-neutral-2)", color: copiedFeedId ? "#16c784" : "var(--cmc-neutral-5)" }}>
-                      {copiedFeedId ? "Copied!" : "Copy"}
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              {/* Footer */}
-              <div className="px-5 py-3 flex items-center justify-between text-[10px]" style={{ borderTop: "1px solid var(--cmc-border)", background: "var(--cmc-neutral-1)", color: "var(--cmc-neutral-5)" }}>
-                <span>Powered by <span className="font-semibold" style={{ color: "var(--pf-accent)" }}>Pyth Network</span></span>
-                <a href={`https://pyth.network/price-feeds`} target="_blank" rel="noopener noreferrer" className="font-semibold hover:underline" style={{ color: "var(--pf-accent)" }}>View on Pyth ↗</a>
-              </div>
-            </div>
-          </div>
         );
       })()}
 
