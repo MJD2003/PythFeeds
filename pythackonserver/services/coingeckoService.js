@@ -61,7 +61,18 @@ async function _fetchWithCacheInner(key, url, ttl, params) {
     return stale;
   }
 
-  throw new Error(`Failed to fetch ${url} and no cached data available`);
+  // 4. Return empty data instead of crashing with 500 -- pages handle empty arrays gracefully
+  const status = lastErr?.response?.status;
+  console.error(`[CoinGecko] All retries failed for ${key} (last status: ${status || "network error"}), returning empty data`);
+  return url.includes("/coins/markets") || url.includes("/exchanges") || url.includes("/coins/categories")
+    ? []
+    : url.includes("/search")
+    ? { coins: [], exchanges: [], categories: [] }
+    : url.includes("/search/trending")
+    ? { coins: [] }
+    : url.includes("/global")
+    ? { data: {} }
+    : {};
 }
 
 /** Top coins by market cap with sparkline + % changes */

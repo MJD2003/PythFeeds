@@ -49,6 +49,7 @@ const COUNT = 20;
 export default function GainersLosersPage() {
   const [coins, setCoins] = useState<CoinMarketItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [period, setPeriod] = useState<Period>("24H");
   const [tier, setTier] = useState<Tier>("All");
   const [livePrices, setLivePrices] = useState<Record<string, number>>({});
@@ -56,14 +57,20 @@ export default function GainersLosersPage() {
 
   const loadCoins = async () => {
     setLoading(true);
+    setError(null);
     try {
       const data = await fetchCoins(1, 200);
-      setCoins(data);
-      setLastRefresh(new Date());
-      // Fetch Pyth live prices for top movers
-      const symbols = [...new Set(data.map((c) => c.symbol.toUpperCase()))].slice(0, 50);
-      fetchPythPricesBatch(symbols).then(setLivePrices).catch(() => {});
-    } catch {}
+      if (Array.isArray(data) && data.length > 0) {
+        setCoins(data);
+        setLastRefresh(new Date());
+        const symbols = [...new Set(data.map((c) => c.symbol.toUpperCase()))].slice(0, 50);
+        fetchPythPricesBatch(symbols).then(setLivePrices).catch(() => {});
+      } else if (coins.length === 0) {
+        setError("Market data is temporarily unavailable. Retrying...");
+      }
+    } catch {
+      if (coins.length === 0) setError("Could not load market data. Retrying...");
+    }
     setLoading(false);
   };
 
@@ -85,7 +92,7 @@ export default function GainersLosersPage() {
     [filtered, period]
   );
 
-  if (loading) {
+  if (loading && coins.length === 0) {
     return (
       <div className="mx-auto max-w-[1200px] px-4 py-24 flex flex-col items-center gap-3">
         <Loader2 size={28} className="animate-spin" style={{ color: "var(--cmc-neutral-4)" }} />
@@ -96,6 +103,15 @@ export default function GainersLosersPage() {
 
   return (
     <div className="mx-auto max-w-[1200px] px-4 py-6">
+      {/* Error banner */}
+      {error && (
+        <div className="mb-4 rounded-lg border px-4 py-3 text-sm flex items-center justify-between" style={{ borderColor: "#ef8c22", background: "rgba(239,140,34,0.06)", color: "#ef8c22" }}>
+          <span>{error}</span>
+          <button onClick={loadCoins} className="flex items-center gap-1 font-semibold text-xs hover:opacity-80">
+            <RefreshCw size={12} /> Retry
+          </button>
+        </div>
+      )}
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
         <div>

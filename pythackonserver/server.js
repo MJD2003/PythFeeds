@@ -116,7 +116,9 @@ app.listen(PORT, () => {
       const cgService = require("./services/coingeckoService");
       await Promise.allSettled([
         cgService.getGlobal(),
-        cgService.getCoinsMarkets(1, 50),
+        cgService.getCoinsMarkets(1, 100),
+        cgService.getCoinsMarkets(1, 200),
+        cgService.getCoinsMarkets(2, 100),
         cgService.getTrending(),
       ]);
       console.log("[Warm-up] Market data cached successfully");
