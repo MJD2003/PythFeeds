@@ -32,14 +32,50 @@ async function setAiCache(key, content, ttlHours) {
 
 let genAI = null;
 let model = null;
+let cachedModelId = null;
+
+/** Default works with Google AI Studio keys; override with GEMINI_MODEL if needed. */
+function getGeminiModelId() {
+  return (process.env.GEMINI_MODEL || "gemini-2.0-flash").trim();
+}
 
 function getModel() {
-  if (!model) {
-    if (!process.env.GEMINI_API_KEY) throw new Error("GEMINI_API_KEY not set");
-    genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-    model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+  if (!process.env.GEMINI_API_KEY || !String(process.env.GEMINI_API_KEY).trim()) {
+    const e = new Error("GEMINI_API_KEY is not configured on the server");
+    e.status = 503;
+    throw e;
+  }
+  const id = getGeminiModelId();
+  if (!model || cachedModelId !== id) {
+    genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY.trim());
+    model = genAI.getGenerativeModel({ model: id });
+    cachedModelId = id;
   }
   return model;
+}
+
+/**
+ * Gemini SDK: response.text() throws when content is blocked, empty, or malformed.
+ * Assemble text from candidates when possible.
+ */
+function safeTextFromGenerateResult(result) {
+  const res = result?.response;
+  if (!res) throw new Error("Empty model response");
+  try {
+    const t = res.text();
+    if (typeof t === "string" && t.trim()) return t.trim();
+  } catch (e) {
+    const cand = res.candidates?.[0];
+    const parts = cand?.content?.parts;
+    if (parts?.length) {
+      const joined = parts.map((p) => p.text || "").join("").trim();
+      if (joined) return joined;
+    }
+    const reason = cand?.finishReason || cand?.finish_reason || "unknown";
+    console.error("[AI] response.text() failed:", e.message, "finishReason:", reason);
+    throw new Error(`AI response blocked or empty (${reason})`);
+  }
+  throw new Error("AI returned no text");
 }
 
 /**
@@ -99,7 +135,7 @@ Instructions:
   try {
     const m = getModel();
     const result = await m.generateContent(prompt);
-    const text = result.response.text().trim();
+    const text = safeTextFromGenerateResult(result);
     cache.set(memKey, text, AI_TTL);
     // Persist to DB so other users get the same result
     await setAiCache(dbKey, text, ANALYSIS_TTL_HOURS);
@@ -130,7 +166,7 @@ ${headlineBlock}`;
   try {
     const m = getModel();
     const result = await m.generateContent(prompt);
-    const text = result.response.text().trim();
+    const text = safeTextFromGenerateResult(result);
     cache.set(key, text, AI_TTL);
     return text;
   } catch (err) {
@@ -185,7 +221,7 @@ ${PYTHFEEDS_KNOWLEDGE_BASE}${marketContext ? `\n${marketContext}` : ""}`;
     });
 
     const result = await chatSession.sendMessage(message);
-    return result.response.text().trim();
+    return safeTextFromGenerateResult(result);
   } catch (err) {
     console.error("[AI] chat error:", err.message);
     throw new Error("AI Chat temporarily unavailable");
@@ -213,7 +249,7 @@ Instructions:
   try {
     const m = getModel();
     const result = await m.generateContent(prompt);
-    const text = result.response.text().trim();
+    const text = safeTextFromGenerateResult(result);
     cache.set(key, text, AI_TTL * 24); // Cache for 12 hours
     return text;
   } catch (err) {
@@ -249,11 +285,30 @@ ${PYTHFEEDS_KNOWLEDGE_BASE}${marketContext ? `\n${marketContext}` : ""}`;
  * Portfolio insights
  */
 async function portfolioInsights(holdings) {
-  const holdingsText = holdings.map(h =>
-    `${h.symbol}: ${h.amount} units @ $${h.price} (${h.change24h >= 0 ? "+" : ""}${h.change24h?.toFixed(2) || 0}% 24h)`
+  const list = (Array.isArray(holdings) ? holdings : [])
+    .filter((h) => h && (h.symbol || h.name))
+    .map((h) => {
+      const amt = Number(h.amount);
+      const price = Number(h.price);
+      const ch = h.change24h !== undefined && h.change24h !== null ? Number(h.change24h) : 0;
+      return {
+        symbol: String(h.symbol || h.name || "?").slice(0, 32),
+        amount: Number.isFinite(amt) ? amt : 0,
+        price: Number.isFinite(price) ? price : 0,
+        change24h: Number.isFinite(ch) ? ch : 0,
+      };
+    });
+  if (!list.length) {
+    const e = new Error("No valid holdings to analyze");
+    e.status = 400;
+    throw e;
+  }
+
+  const holdingsText = list.map(h =>
+    `${h.symbol}: ${h.amount} units @ $${h.price} (${h.change24h >= 0 ? "+" : ""}${h.change24h.toFixed(2)}% 24h)`
   ).join("\n");
 
-  const totalValue = holdings.reduce((s, h) => s + (h.amount * h.price), 0);
+  const totalValue = list.reduce((s, h) => s + h.amount * h.price, 0);
 
   const prompt = `You are a portfolio analyst for PythFeeds. Analyze this crypto/stock portfolio:
 
@@ -273,9 +328,10 @@ Keep it concise, use markdown formatting. Do NOT give buy/sell recommendations.`
   try {
     const m = getModel();
     const result = await m.generateContent(prompt);
-    return result.response.text().trim();
+    return safeTextFromGenerateResult(result);
   } catch (err) {
     console.error("[AI] portfolioInsights error:", err.message);
+    if (err.status) throw err;
     throw new Error("Portfolio insights temporarily unavailable");
   }
 }
@@ -301,7 +357,7 @@ Keep it to 2-3 sentences per pair. Be factual. Do not give financial advice.`;
   try {
     const m = getModel();
     const result = await m.generateContent(prompt);
-    return result.response.text().trim();
+    return safeTextFromGenerateResult(result);
   } catch (err) {
     console.error("[AI] correlationInsights error:", err.message);
     throw new Error("Correlation insights temporarily unavailable");
@@ -322,7 +378,7 @@ Rewrite it simply:`;
   try {
     const m = getModel();
     const result = await m.generateContent(prompt);
-    return result.response.text().trim();
+    return safeTextFromGenerateResult(result);
   } catch (err) {
     console.error("[AI] simplify error:", err.message);
     throw new Error("Simplification temporarily unavailable");
@@ -382,7 +438,7 @@ Formatting rules:
   try {
     const m = getModel();
     const result = await m.generateContent(prompt);
-    const text = result.response.text().trim();
+    const text = safeTextFromGenerateResult(result);
     cache.set(memKey, text, 3600);
     await setAiCache(dbKey, text, DIGEST_TTL_HOURS);
     return text;
@@ -423,7 +479,7 @@ ${batch.map((h, i) => `${i + 1}. ${h}`).join("\n")}`;
     try {
       const m = getModel();
       const result = await m.generateContent(prompt);
-      let text = result.response.text().trim();
+      let text = safeTextFromGenerateResult(result);
       // Strip markdown code fences if present
       text = text.replace(/^```json?\s*/i, "").replace(/```\s*$/, "").trim();
       const parsed = JSON.parse(text);
@@ -471,7 +527,7 @@ Rules:
   try {
     const m = getModel();
     const result = await m.generateContent(prompt);
-    const text = result.response.text().trim();
+    const text = safeTextFromGenerateResult(result);
     cache.set(key, text, 3600); // 1h cache
     return text;
   } catch (err) {

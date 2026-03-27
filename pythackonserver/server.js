@@ -32,6 +32,12 @@ const app = express();
 const PORT = process.env.PORT || 4000;
 const startTime = Date.now();
 
+if (!process.env.GEMINI_API_KEY?.trim()) {
+  console.warn("[AI] GEMINI_API_KEY is missing — /api/ai/* routes will fail until set in pythackonserver/.env");
+} else {
+  console.log(`[AI] Gemini OK (GEMINI_MODEL=${process.env.GEMINI_MODEL || "gemini-2.0-flash"})`);
+}
+
 app.set("trust proxy", 1);
 app.use(cors({ origin: process.env.FRONTEND_URL || "http://localhost:3000" }));
 app.use(compression());
