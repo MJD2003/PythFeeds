@@ -3,9 +3,14 @@ const { cache, CACHE_TTL } = require("../config/cache");
 const { getMetals, getFX, getUSEquities } = require("../services/feedDiscovery");
 
 const HERMES_URL = process.env.PYTH_HERMES_URL || "https://hermes.pyth.network";
+const PYTH_API_KEY = process.env.PYTH_API_KEY || "";
 let hermesClient = null;
 function getClient() {
-  if (!hermesClient) hermesClient = new HermesClient(HERMES_URL);
+  if (!hermesClient) {
+    const opts = { timeout: 15000 };
+    if (PYTH_API_KEY) opts.headers = { "x-api-key": PYTH_API_KEY };
+    hermesClient = new HermesClient(HERMES_URL, opts);
+  }
   return hermesClient;
 }
 

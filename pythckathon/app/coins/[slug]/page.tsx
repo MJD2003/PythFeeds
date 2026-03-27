@@ -79,7 +79,7 @@ export default async function CoinPage({ params }: CoinPageProps) {
     // backend unavailable
   }
 
-  if (!raw) {
+  if (!raw || !raw.symbol || !raw.market_data) {
     notFound();
   }
 

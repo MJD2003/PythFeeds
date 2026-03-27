@@ -5,7 +5,12 @@
  * - Fetches batch prices via /v2/updates/price/latest
  */
 
-const HERMES = "https://hermes.pyth.network";
+const HERMES = process.env.NEXT_PUBLIC_PYTH_HERMES_URL || "https://hermes.pyth.network";
+const PYTH_API_KEY = process.env.NEXT_PUBLIC_PYTH_API_KEY || "";
+function hermesUrl(path: string): string {
+  const sep = path.includes("?") ? "&" : "?";
+  return PYTH_API_KEY ? `${HERMES}${path}${sep}api_key=${PYTH_API_KEY}` : `${HERMES}${path}`;
+}
 
 // ── Cache: symbol → feedId (persists for session) ──
 const feedIdCache = new Map<string, string>();
@@ -73,7 +78,7 @@ export interface PythPrice {
  * Uses the Hermes /v2/price_feeds search endpoint.
  * Returns the feed ID hex string (without 0x prefix) or null if not found.
  */
-async function discoverFeedId(symbol: string): Promise<string | null> {
+export async function discoverFeedId(symbol: string): Promise<string | null> {
   const upper = symbol.toUpperCase();
 
   if (feedIdCache.has(upper)) return feedIdCache.get(upper)!;
@@ -90,7 +95,7 @@ async function discoverFeedId(symbol: string): Promise<string | null> {
   for (const assetType of assetTypes) {
     try {
       const res = await fetch(
-        `${HERMES}/v2/price_feeds?query=${encodeURIComponent(upper)}&asset_type=${assetType}`
+        hermesUrl(`/v2/price_feeds?query=${encodeURIComponent(upper)}&asset_type=${assetType}`)
       );
       if (!res.ok) continue;
       const feeds: { id: string; attributes: { base: string; quote_currency: string; symbol: string } }[] = await res.json();
@@ -128,7 +133,7 @@ export async function fetchPythPrice(symbol: string): Promise<PythPrice | null> 
   if (!feedId) return null;
 
   try {
-    const res = await fetch(`${HERMES}/v2/updates/price/latest?ids[]=0x${feedId}`);
+    const res = await fetch(hermesUrl(`/v2/updates/price/latest?ids[]=0x${feedId}`));
     if (!res.ok) return null;
     const data = await res.json();
     const parsed = data?.parsed?.[0]?.price;
@@ -204,7 +209,7 @@ export async function fetchPythPricesBatch(
       const validChunk = chunk.filter((f) => /^[0-9a-fA-F]{64}$/.test(f.feedId));
       if (validChunk.length === 0) continue;
       const idsParam = validChunk.map((f) => `ids[]=0x${f.feedId}`).join("&");
-      const res = await fetch(`${HERMES}/v2/updates/price/latest?${idsParam}`);
+      const res = await fetch(hermesUrl(`/v2/updates/price/latest?${idsParam}`));
       if (!res.ok) {
         console.warn(`[PythService] Batch failed (${validChunk.length} ids): ${res.status}`);
         continue;
@@ -269,7 +274,7 @@ export async function subscribePythStream(
   if (feedEntries.length === 0) return () => {};
 
   const idsParam = feedEntries.map((f) => `ids[]=0x${f.feedId}`).join("&");
-  const url = `${HERMES}/v2/updates/price/stream?${idsParam}&encoding=json&parsed=true`;
+  const url = hermesUrl(`/v2/updates/price/stream?${idsParam}&encoding=json&parsed=true`);
 
   let es: EventSource | null = null;
   try {

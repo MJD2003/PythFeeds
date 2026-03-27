@@ -1,6 +1,7 @@
 import { HermesClient } from "@pythnetwork/hermes-client";
 
-const HERMES_URL = "https://hermes.pyth.network";
+const HERMES_URL = process.env.NEXT_PUBLIC_PYTH_HERMES_URL || "https://hermes.pyth.network";
+const PYTH_API_KEY = process.env.NEXT_PUBLIC_PYTH_API_KEY || "";
 
 // Pyth price feed IDs (hex) for major crypto assets
 export const PYTH_CRYPTO_FEEDS: Record<string, string> = {
@@ -52,7 +53,9 @@ let hermesClient: HermesClient | null = null;
 
 function getClient(): HermesClient {
   if (!hermesClient) {
-    hermesClient = new HermesClient(HERMES_URL);
+    const opts: Record<string, unknown> = {};
+    if (PYTH_API_KEY) opts.headers = { "x-api-key": PYTH_API_KEY };
+    hermesClient = new HermesClient(HERMES_URL, opts);
   }
   return hermesClient;
 }

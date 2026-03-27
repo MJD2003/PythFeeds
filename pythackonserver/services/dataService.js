@@ -233,25 +233,77 @@ async function getWhaleAlerts() {
 
 /**
  * Economic calendar - major macro + crypto events
- * Generates realistic recurring dates based on known schedules
+ * Tries Forex Factory mirror first, falls back to template generation
  */
 async function getEconomicCalendar() {
   const key = "data_economic_calendar";
   const cached = cache.get(key);
   if (cached) return cached;
 
+  let calendar;
+  try {
+    calendar = await fetchForexFactoryCalendar();
+  } catch {
+    calendar = null;
+  }
+
+  if (!calendar || calendar.length === 0) {
+    calendar = generateTemplateCalendar();
+  }
+
+  calendar.sort((a, b) => a.timestamp - b.timestamp);
+  cache.set(key, calendar, 3600);
+  return calendar;
+}
+
+async function fetchForexFactoryCalendar() {
+  const res = await fetch(
+    "https://nfs.faireconomy.media/ff_calendar_thisweek.json",
+    { signal: AbortSignal.timeout(5000) }
+  );
+  if (!res.ok) throw new Error(`FF calendar: ${res.status}`);
+  const raw = await res.json();
+  if (!Array.isArray(raw) || raw.length === 0) return null;
+
+  const now = new Date();
+  const impactMap = { High: "high", Medium: "medium", Low: "low", Holiday: "low" };
+
+  const mapped = raw.map((ev, i) => {
+    const d = new Date(ev.date);
+    const daysUntil = Math.round((d.getTime() - now.getTime()) / 86400000);
+    return {
+      id: `ff_${i}`,
+      name: ev.title || "Unknown Event",
+      body: ev.country || "Global",
+      impact: impactMap[ev.impact] || "low",
+      recurring: "scheduled",
+      category: "macro",
+      description: ev.title || "",
+      date: d.toISOString().split("T")[0],
+      timestamp: d.getTime(),
+      daysUntil,
+      actual: ev.actual || null,
+      forecast: ev.forecast || null,
+      previous: ev.previous || null,
+    };
+  });
+
+  // Also append crypto template events so we always have them
+  const cryptoEvents = generateCryptoTemplateEvents();
+  return [...mapped, ...cryptoEvents];
+}
+
+function generateTemplateCalendar() {
   const now = new Date();
   const year = now.getFullYear();
   const month = now.getMonth();
 
-  // Helper: nth weekday of month (0=Sun..6=Sat), n is 1-based
   function nthWeekday(y, m, weekday, n) {
     const first = new Date(y, m, 1);
     let day = 1 + ((weekday - first.getDay() + 7) % 7) + (n - 1) * 7;
     return new Date(y, m, day);
   }
 
-  // ── Macro Events ──
   const macroTemplates = [
     { name: "FOMC Meeting", body: "Federal Reserve", impact: "high", recurring: "6 weeks", category: "macro", description: "Federal Open Market Committee interest rate decision and economic projections", dayOfMonth: 14 },
     { name: "CPI Report", body: "Bureau of Labor Statistics", impact: "high", recurring: "monthly", category: "macro", description: "Consumer Price Index measuring inflation rate changes", dayOfMonth: 12 },
@@ -269,23 +321,9 @@ async function getEconomicCalendar() {
     { name: "Trade Balance", body: "Census Bureau", impact: "low", recurring: "monthly", category: "macro", description: "International trade in goods and services balance", dayOfMonth: 6 },
   ];
 
-  // ── Crypto Events ──
-  const cryptoEvents = [
-    { name: "Ethereum Pectra Upgrade", body: "Ethereum Foundation", impact: "high", recurring: "one-time", category: "crypto", description: "Major Ethereum network upgrade combining Prague and Electra EIPs", dayOffset: 20 },
-    { name: "Solana Firedancer Launch", body: "Jump Crypto", impact: "high", recurring: "one-time", category: "crypto", description: "New high-performance Solana validator client by Jump Crypto", dayOffset: 45 },
-    { name: "SOL Token Unlock", body: "Solana Foundation", impact: "medium", recurring: "monthly", category: "crypto", description: "Monthly Solana token unlock from staking and foundation allocations", dayOfMonth: 1 },
-    { name: "ARB Token Unlock", body: "Arbitrum Foundation", impact: "medium", recurring: "monthly", category: "crypto", description: "Arbitrum DAO token unlock event releasing ARB to investors and team", dayOfMonth: 16 },
-    { name: "Pyth Governance Vote", body: "Pyth Network", impact: "medium", recurring: "quarterly", category: "crypto", description: "Pyth Network governance proposal voting period", dayOffset: 30 },
-    { name: "Bitcoin Options Expiry", body: "Deribit / CME", impact: "high", recurring: "monthly (last Friday)", category: "crypto", description: "Monthly BTC options expiry on Deribit and CME — expect volatility", weekday: 5, nth: 4 },
-    { name: "ETH Options Expiry", body: "Deribit", impact: "medium", recurring: "monthly (last Friday)", category: "crypto", description: "Monthly ETH options expiry on Deribit", weekday: 5, nth: 4, dayAdjust: 0 },
-    { name: "Grayscale GBTC Rebalance", body: "Grayscale", impact: "low", recurring: "quarterly", category: "crypto", description: "Grayscale Bitcoin Trust quarterly portfolio rebalancing", dayOffset: 60 },
-    { name: "CME Futures Expiry", body: "CME Group", impact: "medium", recurring: "monthly (3rd Friday)", category: "crypto", description: "CME Bitcoin and Ethereum futures monthly settlement", weekday: 5, nth: 3 },
-  ];
-
   const calendar = [];
   let idCounter = 0;
 
-  // Generate 2 months of macro events (current + next)
   for (let mOff = 0; mOff <= 1; mOff++) {
     const m = month + mOff;
     for (const tmpl of macroTemplates) {
@@ -295,7 +333,7 @@ async function getEconomicCalendar() {
       } else {
         d = new Date(year, m, tmpl.dayOfMonth || 15);
       }
-      if (d < new Date(now.getTime() - 2 * 86400000)) continue; // skip past events (>2d ago)
+      if (d < new Date(now.getTime() - 2 * 86400000)) continue;
       const daysUntil = Math.round((d.getTime() - now.getTime()) / 86400000);
       calendar.push({
         id: `macro_${idCounter++}`,
@@ -308,12 +346,44 @@ async function getEconomicCalendar() {
         date: d.toISOString().split("T")[0],
         timestamp: d.getTime(),
         daysUntil,
+        actual: null,
+        forecast: null,
+        previous: null,
       });
     }
   }
 
-  // Generate crypto events
-  for (const ce of cryptoEvents) {
+  const cryptoEvents = generateCryptoTemplateEvents();
+  return [...calendar, ...cryptoEvents];
+}
+
+function generateCryptoTemplateEvents() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth();
+
+  function nthWeekday(y, m, weekday, n) {
+    const first = new Date(y, m, 1);
+    let day = 1 + ((weekday - first.getDay() + 7) % 7) + (n - 1) * 7;
+    return new Date(y, m, day);
+  }
+
+  const cryptoTemplates = [
+    { name: "Ethereum Pectra Upgrade", body: "Ethereum Foundation", impact: "high", recurring: "one-time", category: "crypto", description: "Major Ethereum network upgrade combining Prague and Electra EIPs", dayOffset: 20 },
+    { name: "Solana Firedancer Launch", body: "Jump Crypto", impact: "high", recurring: "one-time", category: "crypto", description: "New high-performance Solana validator client by Jump Crypto", dayOffset: 45 },
+    { name: "SOL Token Unlock", body: "Solana Foundation", impact: "medium", recurring: "monthly", category: "crypto", description: "Monthly Solana token unlock from staking and foundation allocations", dayOfMonth: 1 },
+    { name: "ARB Token Unlock", body: "Arbitrum Foundation", impact: "medium", recurring: "monthly", category: "crypto", description: "Arbitrum DAO token unlock event releasing ARB to investors and team", dayOfMonth: 16 },
+    { name: "Pyth Governance Vote", body: "Pyth Network", impact: "medium", recurring: "quarterly", category: "crypto", description: "Pyth Network governance proposal voting period", dayOffset: 30 },
+    { name: "Bitcoin Options Expiry", body: "Deribit / CME", impact: "high", recurring: "monthly (last Friday)", category: "crypto", description: "Monthly BTC options expiry on Deribit and CME — expect volatility", weekday: 5, nth: 4 },
+    { name: "ETH Options Expiry", body: "Deribit", impact: "medium", recurring: "monthly (last Friday)", category: "crypto", description: "Monthly ETH options expiry on Deribit", weekday: 5, nth: 4, dayAdjust: 0 },
+    { name: "Grayscale GBTC Rebalance", body: "Grayscale", impact: "low", recurring: "quarterly", category: "crypto", description: "Grayscale Bitcoin Trust quarterly portfolio rebalancing", dayOffset: 60 },
+    { name: "CME Futures Expiry", body: "CME Group", impact: "medium", recurring: "monthly (3rd Friday)", category: "crypto", description: "CME Bitcoin and Ethereum futures monthly settlement", weekday: 5, nth: 3 },
+  ];
+
+  const events = [];
+  let idCounter = 0;
+
+  for (const ce of cryptoTemplates) {
     let d;
     if (ce.dayOffset !== undefined) {
       d = new Date(now.getTime() + ce.dayOffset * 86400000);
@@ -325,7 +395,7 @@ async function getEconomicCalendar() {
     }
     const daysUntil = Math.round((d.getTime() - now.getTime()) / 86400000);
     if (daysUntil < -2) continue;
-    calendar.push({
+    events.push({
       id: `crypto_${idCounter++}`,
       name: ce.name,
       body: ce.body,
@@ -336,12 +406,13 @@ async function getEconomicCalendar() {
       date: d.toISOString().split("T")[0],
       timestamp: d.getTime(),
       daysUntil,
+      actual: null,
+      forecast: null,
+      previous: null,
     });
   }
 
-  calendar.sort((a, b) => a.timestamp - b.timestamp);
-  cache.set(key, calendar, 3600);
-  return calendar;
+  return events;
 }
 
 module.exports = {

@@ -58,7 +58,7 @@ export default function Footer() {
         <div className="gradient-divider mt-8 mb-4" />
         <div className="flex items-center justify-between flex-wrap gap-3">
           <p className="text-[11px]" style={{ color: "var(--cmc-neutral-5)" }}>
-            2025 PythFeeds. All rights reserved. Data powered by <span style={{ color: "var(--pf-accent)", fontWeight: 600 }}>Pyth Network</span>.
+            {new Date().getFullYear()} PythFeeds. All rights reserved. Data powered by <span style={{ color: "var(--pf-accent)", fontWeight: 600 }}>Pyth Network</span>.
           </p>
           <GasTracker />
         </div>

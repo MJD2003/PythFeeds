@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
-import { Loader2, Calendar, ChevronDown, ChevronUp, AlertTriangle, Clock, Landmark, Bitcoin, Filter } from "lucide-react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import { Loader2, Calendar, ChevronDown, ChevronUp, AlertTriangle, Clock, Landmark, Bitcoin, TrendingUp, TrendingDown, Minus } from "lucide-react";
 import { fetchEconomicCalendar, fetchAIChat, type CalendarEvent } from "@/lib/api/backend";
 import PythIcon from "@/Components/shared/PythIcon";
 import { MagicCard } from "@/Components/magicui/magic-card";
@@ -15,6 +15,55 @@ const IMPACT_CONFIG: Record<string, { color: string; label: string; bg: string }
 
 type CategoryFilter = "all" | "macro" | "crypto";
 
+function useCountdowns(events: CalendarEvent[]) {
+  const [now, setNow] = useState(Date.now());
+  const upcoming = useMemo(
+    () => events.filter(e => e.timestamp > Date.now() && e.timestamp - Date.now() < 86400000),
+    [events]
+  );
+  const hasUpcoming = upcoming.length > 0;
+
+  useEffect(() => {
+    if (!hasUpcoming) return;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [hasUpcoming]);
+
+  const getCountdown = useCallback(
+    (timestamp: number): string | null => {
+      const diff = timestamp - now;
+      if (diff <= 0 || diff >= 86400000) return null;
+      const h = Math.floor(diff / 3600000);
+      const m = Math.floor((diff % 3600000) / 60000);
+      const s = Math.floor((diff % 60000) / 1000);
+      return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+    },
+    [now]
+  );
+
+  return getCountdown;
+}
+
+function parseNumeric(val: string | null | undefined): number | null {
+  if (!val) return null;
+  const cleaned = val.replace(/[%KMB,]/g, "").trim();
+  const n = parseFloat(cleaned);
+  return isNaN(n) ? null : n;
+}
+
+function DataChip({ label, value, color }: { label: string; value: string; color?: string }) {
+  return (
+    <div style={{
+      display: "inline-flex", alignItems: "center", gap: 4,
+      padding: "3px 8px", borderRadius: 6,
+      background: "var(--cmc-neutral-1, rgba(128,128,128,0.06))",
+    }}>
+      <span style={{ fontSize: 9, fontWeight: 600, color: "var(--cmc-neutral-5)", textTransform: "uppercase", letterSpacing: "0.04em" }}>{label}</span>
+      <span style={{ fontSize: 12, fontWeight: 700, color: color || "var(--cmc-text)" }}>{value}</span>
+    </div>
+  );
+}
+
 export default function CalendarPage() {
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [loading, setLoading] = useState(true);
@@ -23,6 +72,7 @@ export default function CalendarPage() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [aiPreviews, setAiPreviews] = useState<Record<string, string>>({});
   const [aiLoading, setAiLoading] = useState<Record<string, boolean>>({});
+  const getCountdown = useCountdowns(events);
 
   useEffect(() => {
     fetchEconomicCalendar().then(setEvents).catch(() => {}).finally(() => setLoading(false));
@@ -83,12 +133,13 @@ export default function CalendarPage() {
             { label: "Macro", value: macroCount.toString(), icon: Landmark, color: "var(--pf-info)" },
             { label: "Crypto", value: cryptoCount.toString(), icon: Bitcoin, color: "var(--pf-accent)" },
           ].map(s => (
-            <div key={s.label} className="rounded-xl px-4 py-3 relative overflow-hidden" style={{ background: "var(--cmc-bg)", borderTop: `2px solid ${s.color}`, borderLeft: "1px solid var(--cmc-border)", borderRight: "1px solid var(--cmc-border)", borderBottom: "1px solid var(--cmc-border)" }}>
+            <div key={s.label} className="rounded-xl px-4 py-3 relative overflow-hidden" style={{ background: "var(--cmc-neutral-1)", borderTop: `2px solid ${s.color}`, borderLeft: "1px solid var(--cmc-border)", borderRight: "1px solid var(--cmc-border)", borderBottom: "1px solid var(--cmc-border)" }}>
               <div className="flex items-center gap-1.5 mb-1">
                 <s.icon size={11} style={{ color: "var(--cmc-neutral-5)" }} />
                 <span className="text-[10px] font-medium" style={{ color: "var(--cmc-neutral-5)" }}>{s.label}</span>
               </div>
               <p className="text-lg font-bold" style={{ color: s.color }}>{s.value}</p>
+              <BorderBeam size={80} duration={8} colorFrom="var(--pf-accent)" colorTo="var(--pf-teal)" />
             </div>
           ))}
         </div>
@@ -96,7 +147,6 @@ export default function CalendarPage() {
 
       {/* Filter pills */}
       <div className="flex flex-wrap items-center gap-2 mb-5">
-        {/* Category filter */}
         <div className="flex items-center gap-1 mr-2">
           {([
             { key: "all" as CategoryFilter, label: "All", icon: <Calendar size={10} /> },
@@ -117,7 +167,6 @@ export default function CalendarPage() {
 
         <div className="w-px h-5 bg-(--cmc-border)" />
 
-        {/* Impact filter */}
         {[
           { key: "all", label: "All Impact" },
           { key: "high", label: "High" },
@@ -139,7 +188,6 @@ export default function CalendarPage() {
 
       {loading ? (
         <div className="space-y-4">
-          {/* Skeleton stat cards */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             {[0, 1, 2].map((i) => (
               <div key={i} className="rounded-xl px-4 py-3 relative overflow-hidden animate-pulse" style={{ background: "var(--cmc-bg)", border: "1px solid var(--cmc-border)" }}>
@@ -150,7 +198,6 @@ export default function CalendarPage() {
               </div>
             ))}
           </div>
-          {/* Skeleton event cards */}
           <div className="space-y-3">
             {[0, 1, 2, 3].map((i) => (
               <MagicCard key={i} className="rounded-xl overflow-hidden" gradientColor="rgba(153,69,255,0.02)" gradientFrom="var(--pf-accent)08" gradientTo="transparent">
@@ -173,11 +220,21 @@ export default function CalendarPage() {
           <p className="text-sm" style={{ color: "var(--cmc-neutral-5)" }}>No events match this filter</p>
         </div>
       ) : (
-        <div className="space-y-2">
+        <div className="space-y-2.5">
           {filtered.map(event => {
             const impact = IMPACT_CONFIG[event.impact] || IMPACT_CONFIG.low;
             const isExpanded = expandedId === event.id;
             const isUrgent = event.daysUntil <= 3 && event.daysUntil >= 0;
+            const countdown = getCountdown(event.timestamp);
+
+            const hasData = event.actual || event.forecast || event.previous;
+            const actualNum = parseNumeric(event.actual);
+            const forecastNum = parseNumeric(event.forecast);
+            let beatColor: string | undefined;
+            if (actualNum !== null && forecastNum !== null) {
+              beatColor = actualNum > forecastNum ? "#16c784" : actualNum < forecastNum ? "#ea3943" : "var(--cmc-neutral-5)";
+            }
+
             return (
               <div
                 key={event.id}
@@ -187,7 +244,7 @@ export default function CalendarPage() {
                 {isUrgent && <BorderBeam size={60} duration={5} colorFrom={impact.color} colorTo="var(--pf-accent)" borderWidth={1.5} />}
                 <button
                   onClick={() => toggleExpand(event)}
-                  className="w-full flex items-center gap-4 p-4 text-left transition-all hover:opacity-90"
+                  className="w-full flex items-center gap-4 p-4 pb-3 text-left transition-all hover:opacity-90"
                 >
                   {/* Date badge */}
                   <div className="shrink-0 w-12 h-12 rounded-lg flex flex-col items-center justify-center" style={{ background: impact.bg }}>
@@ -196,7 +253,7 @@ export default function CalendarPage() {
                   </div>
 
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-0.5">
+                    <div className="flex items-center gap-2 mb-1">
                       <p className="font-bold text-sm truncate" style={{ color: "var(--cmc-text)" }}>{event.name}</p>
                       <span className="text-[9px] px-1.5 py-0.5 rounded-full font-semibold shrink-0" style={{ background: impact.bg, color: impact.color }}>{impact.label}</span>
                       <span className="text-[8px] px-1.5 py-0.5 rounded-full font-bold shrink-0" style={{
@@ -204,16 +261,44 @@ export default function CalendarPage() {
                         color: event.category === "crypto" ? "var(--pf-accent)" : "var(--pf-info)",
                       }}>{event.category === "crypto" ? "Crypto" : "Macro"}</span>
                     </div>
-                    <p className="text-[11px] truncate" style={{ color: "var(--cmc-neutral-5)" }}>{event.body} · {event.recurring}</p>
+                    <p className="text-[11px]" style={{ color: "var(--cmc-neutral-5)" }}>{event.body} · {event.recurring}</p>
                   </div>
 
-                  <div className="shrink-0 flex items-center gap-2">
-                    <span className="text-xs font-medium" style={{ color: isUrgent ? "#ea3943" : "var(--cmc-neutral-5)" }}>
-                      {event.daysUntil <= 0 ? "Today" : event.daysUntil === 1 ? "Tomorrow" : `${event.daysUntil}d`}
-                    </span>
-                    {isExpanded ? <ChevronUp size={14} style={{ color: "var(--cmc-neutral-5)" }} /> : <ChevronDown size={14} style={{ color: "var(--cmc-neutral-5)" }} />}
+                  <div className="shrink-0 flex flex-col items-end gap-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-medium" style={{ color: isUrgent ? "#ea3943" : "var(--cmc-neutral-5)" }}>
+                        {event.daysUntil <= 0 ? "Today" : event.daysUntil === 1 ? "Tomorrow" : `${event.daysUntil}d`}
+                      </span>
+                      {isExpanded ? <ChevronUp size={14} style={{ color: "var(--cmc-neutral-5)" }} /> : <ChevronDown size={14} style={{ color: "var(--cmc-neutral-5)" }} />}
+                    </div>
+                    {countdown && (
+                      <span className="font-mono text-[11px] font-bold px-2 py-0.5 rounded-md" style={{
+                        background: "rgba(234,57,67,0.08)",
+                        color: "#ea3943",
+                      }}>{countdown}</span>
+                    )}
                   </div>
                 </button>
+
+                {/* Actual / Forecast / Previous chips */}
+                {hasData && (
+                  <div className="flex items-center gap-2 px-4 pb-3 flex-wrap" style={{ marginLeft: 64 }}>
+                    {event.actual && (
+                      <DataChip label="Act" value={event.actual} color={beatColor} />
+                    )}
+                    {event.forecast && (
+                      <DataChip label="Fcst" value={event.forecast} />
+                    )}
+                    {event.previous && (
+                      <DataChip label="Prev" value={event.previous} />
+                    )}
+                    {beatColor && (
+                      beatColor === "#16c784" ? <TrendingUp size={13} style={{ color: beatColor }} /> :
+                      beatColor === "#ea3943" ? <TrendingDown size={13} style={{ color: beatColor }} /> :
+                      <Minus size={13} style={{ color: beatColor }} />
+                    )}
+                  </div>
+                )}
 
                 {isExpanded && (
                   <div className="px-4 pb-4 pt-0" style={{ borderTop: "1px solid var(--cmc-border)" }}>

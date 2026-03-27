@@ -76,6 +76,9 @@ function getContextSuggestions(pathname: string): string[] {
   if (pathname === "/fear-greed") return ["What drives Fear & Greed?", "Should I buy when fearful?", "Historical extremes"];
   if (pathname === "/yields") return ["Best DeFi yields now", "Explain impermanent loss", "Safest yield strategies"];
   if (pathname === "/alerts") return ["Best alert strategies", "Key support levels for BTC", "When to set alerts"];
+  if (pathname === "/calendar") return ["What events are coming up?", "How does CPI affect crypto?", "Next FOMC meeting impact"];
+  if (pathname === "/heatmap") return ["Which sectors are hottest?", "Explain the heatmap colors", "Biggest movers today"];
+  if (pathname === "/feeds") return ["What are Pyth price feeds?", "Explain confidence intervals", "Which feeds have widest spreads?"];
   return ["Top gainers this week", "SOL vs ETH comparison", "What's happening in DeFi?"];
 }
 
@@ -110,7 +113,6 @@ export default function AIChatbot() {
   }, []);
 
   useEffect(() => { scrollToBottom(); }, [messages, isOpen, scrollToBottom]);
-  useEffect(() => { setIsOpen(false); }, [pathname]);
 
   useEffect(() => {
     const el = scrollContainerRef.current;
@@ -140,6 +142,8 @@ export default function AIChatbot() {
     else if (pathname === "/alerts") ctx.page = "price_alerts";
     else if (pathname === "/digest") ctx.page = "ai_digest";
     else if (pathname === "/heatmap") ctx.page = "heatmap";
+    else if (pathname === "/calendar") ctx.page = "calendar";
+    else if (pathname === "/feeds") ctx.page = "feeds";
     else if (pathname === "/bubbles") ctx.page = "bubbles";
     else if (pathname === "/converter") ctx.page = "converter";
     else if (pathname === "/compare") ctx.page = "compare";
@@ -276,67 +280,89 @@ export default function AIChatbot() {
   const [speakingIdx, setSpeakingIdx] = useState<number | null>(null);
   const speechSynthRef = useRef<SpeechSynthesisUtterance | null>(null);
 
-  // WhatsApp-style voice recording
-  const toggleVoice = () => {
-    setVoiceError("");
-    if (isListening) {
-      recognitionRef.current?.stop();
-      setIsListening(false);
-      if (recordingTimerRef.current) { clearInterval(recordingTimerRef.current); recordingTimerRef.current = null; }
-      setRecordingDuration(0);
-      // Auto-send if we have text
+  const voiceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const stopRecording = useCallback((autoSend = false) => {
+    recognitionRef.current?.stop();
+    setIsListening(false);
+    if (recordingTimerRef.current) { clearInterval(recordingTimerRef.current); recordingTimerRef.current = null; }
+    if (voiceTimeoutRef.current) { clearTimeout(voiceTimeoutRef.current); voiceTimeoutRef.current = null; }
+    setRecordingDuration(0);
+    if (autoSend) {
       setTimeout(() => {
         setInput(prev => { if (prev.trim()) sendMessage(prev.trim()); return ""; });
       }, 200);
+    }
+  }, []);
+
+  const toggleVoice = () => {
+    setVoiceError("");
+    if (isListening) {
+      stopRecording(true);
       return;
     }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SR) {
       setVoiceError("Voice input not supported in this browser. Try Chrome.");
-      setTimeout(() => setVoiceError(""), 3000);
+      setTimeout(() => setVoiceError(""), 4000);
       return;
     }
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const recognition = new SR() as any;
-      recognition.continuous = true;
+      recognition.continuous = false;
       recognition.interimResults = true;
       recognition.lang = "en-US";
+      recognition.maxAlternatives = 1;
+
+      let finalTranscript = "";
+
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       recognition.onresult = (e: any) => {
-        let transcript = "";
+        let interim = "";
         for (let i = 0; i < e.results.length; i++) {
-          transcript += e.results[i][0].transcript;
+          const result = e.results[i];
+          if (result.isFinal) {
+            finalTranscript += result[0].transcript;
+          } else {
+            interim += result[0].transcript;
+          }
         }
-        setInput(transcript);
+        setInput(finalTranscript + interim);
       };
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       recognition.onerror = (e: any) => {
-        setIsListening(false);
-        if (recordingTimerRef.current) { clearInterval(recordingTimerRef.current); recordingTimerRef.current = null; }
-        setRecordingDuration(0);
-        if (e.error === "not-allowed") {
-          setVoiceError("Microphone access denied. Check browser permissions.");
-        } else if (e.error === "no-speech") {
-          setVoiceError("No speech detected. Try again.");
-        } else {
-          setVoiceError("Voice input failed. Try again.");
-        }
-        setTimeout(() => setVoiceError(""), 3000);
+        stopRecording(false);
+        const errorMessages: Record<string, string> = {
+          "not-allowed": "Microphone access denied. Check browser permissions.",
+          "no-speech": "No speech detected. Please try again.",
+          "audio-capture": "No microphone found. Check your device settings.",
+          "network": "Network error. Check your connection and try again.",
+          "aborted": "Voice input was cancelled.",
+          "service-not-allowed": "Speech service not available. Try Chrome browser.",
+          "language-not-supported": "Language not supported. Try again.",
+        };
+        setVoiceError(errorMessages[e.error] || `Voice error: ${e.error || "unknown"}. Try again.`);
+        setTimeout(() => setVoiceError(""), 4000);
       };
       recognition.onend = () => {
-        setIsListening(false);
-        if (recordingTimerRef.current) { clearInterval(recordingTimerRef.current); recordingTimerRef.current = null; }
+        stopRecording(false);
       };
       recognitionRef.current = recognition;
       recognition.start();
       setIsListening(true);
       setRecordingDuration(0);
       recordingTimerRef.current = setInterval(() => setRecordingDuration(d => d + 1), 1000);
+
+      voiceTimeoutRef.current = setTimeout(() => {
+        if (recognitionRef.current) {
+          stopRecording(true);
+        }
+      }, 10000);
     } catch {
-      setVoiceError("Could not start voice input.");
-      setTimeout(() => setVoiceError(""), 3000);
+      setVoiceError("Could not start voice input. Check microphone permissions.");
+      setTimeout(() => setVoiceError(""), 4000);
     }
   };
 

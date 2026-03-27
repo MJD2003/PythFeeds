@@ -505,6 +505,13 @@ useEffect(() => {
     return { total: nodes.length, up, down, avg };
   }, [nodes]);
 
+  const topMovers = useMemo(() => {
+    const valid = nodes.filter(n => n.id !== "__others__");
+    const gainers = [...valid].sort((a, b) => b.change - a.change).slice(0, 5);
+    const losers = [...valid].sort((a, b) => a.change - b.change).slice(0, 5);
+    return { gainers, losers };
+  }, [nodes]);
+
   const hovered = hoveredId ? layout.find(l => l.id === hoveredId) : null;
   const hoveredCoin = hoveredId ? coins.find(c => c.id === hoveredId) : null;
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -724,7 +731,8 @@ useEffect(() => {
         </div>
       </div>
 
-      {/* ═══ Treemap ═══ */}
+      {/* ═══ Treemap + Sidebar ═══ */}
+      <div className="flex flex-1 overflow-hidden">
       <div ref={gridRef} className="relative flex-1 overflow-hidden rounded-b-xl" onMouseMove={handleMouse} style={{ background: "#0b0b12" }}>
         {loading ? (
           <div className="absolute inset-0 p-1.5 grid grid-cols-6 grid-rows-4 gap-[3px]">
@@ -783,14 +791,16 @@ useEffect(() => {
                     ? snapshotsRef.current[timelapseIdx].changes[node.id]
                     : node.change
                 ),
-                borderRadius: 5,
+                borderRadius: "6px",
+                border: "1px solid rgba(255,255,255,0.06)",
                 opacity: searchMatchIds && !isOthers && !searchMatchIds.has(node.id) ? 0.2
                   : hoveredId && !isHovered ? 0.5 : 1,
                 filter: searchMatchIds && !isOthers && searchMatchIds.has(node.id) ? "brightness(1.3)"
                   : isHovered ? "brightness(1.25)" : tileFlash ? "brightness(1.5) saturate(1.5)" : `blur(${confRatio * 3}px)`,
                 boxShadow: tileFlash === "up" ? "inset 0 0 30px rgba(34,197,94,0.8)" : tileFlash === "down" ? "inset 0 0 30px rgba(239,68,68,0.8)" : isHovered ? "inset 0 0 20px rgba(255,255,255,0.06)" : "inset 0 1px 0 rgba(255,255,255,0.04)",
+                transform: isHovered ? "scale(1.02)" : "scale(1)",
                 zIndex: isHovered || tileFlash ? 10 : 1,
-                transition: tileFlash ? "none" : "filter 0.3s ease, outline 0.3s ease, background 0.5s ease",
+                transition: tileFlash ? "none" : "filter 0.3s ease, outline 0.3s ease, background 0.5s ease, transform 0.15s ease",
               };
 
               const content = showContent && (
@@ -1109,6 +1119,12 @@ useEffect(() => {
                    <span className="text-[9px] font-mono text-white/50">± ${fmtPrice(livePrices[hovered.symbol].confidence).replace('$', '')}</span>
                 </div>
               )}
+              <div className="flex items-center justify-between">
+                <span className="text-[10px]" style={{ color: "rgba(255,255,255,0.4)" }}>{period} Change</span>
+                <span className="text-[11px] font-bold" style={{ color: hovered.change >= 0 ? "#22c55e" : "#ef4444" }}>
+                  {hovered.change >= 0 ? "+" : ""}{hovered.change.toFixed(2)}%
+                </span>
+              </div>
               <div className="flex items-center justify-between mt-1 pt-1 border-t border-white/5">
                 <span className="text-[10px]" style={{ color: "rgba(255,255,255,0.4)" }}>Market Cap</span>
                 <span className="text-[11px] font-semibold text-white">{fmtLarge(hovered.mcap)}</span>
@@ -1140,20 +1156,82 @@ useEffect(() => {
         )}
       </div>
 
+        {/* ═══ Top Movers Sidebar ═══ */}
+        <div className="hidden lg:flex flex-col w-[220px] shrink-0 overflow-y-auto no-scrollbar" style={{ background: "rgba(11,11,18,0.95)", borderLeft: "1px solid rgba(255,255,255,0.06)" }}>
+          <div className="px-3 pt-3 pb-2">
+            <div className="flex items-center gap-1.5 mb-2">
+              <TrendingUp size={12} style={{ color: "var(--pf-up, #22c55e)" }} />
+              <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "var(--pf-up, #22c55e)" }}>Top Gainers</span>
+            </div>
+            {topMovers.gainers.map((g) => (
+              <div
+                key={g.id}
+                onClick={() => setSelectedId(g.id === selectedId ? null : g.id)}
+                className="flex items-center justify-between py-1.5 px-2 rounded-lg cursor-pointer transition-colors hover:bg-white/5"
+                style={{ borderBottom: "1px solid rgba(255,255,255,0.03)" }}
+              >
+                <div className="flex items-center gap-2">
+                  <div className="w-1.5 h-1.5 rounded-full" style={{ background: "var(--pf-up, #22c55e)" }} />
+                  <span className="text-[11px] font-bold text-white">{g.symbol}</span>
+                </div>
+                <span className="text-[11px] font-bold" style={{ color: "var(--pf-up, #22c55e)" }}>
+                  +{g.change.toFixed(2)}%
+                </span>
+              </div>
+            ))}
+          </div>
+          <div className="mx-3 border-t" style={{ borderColor: "var(--cmc-border, rgba(255,255,255,0.06))" }} />
+          <div className="px-3 pt-2 pb-3">
+            <div className="flex items-center gap-1.5 mb-2">
+              <TrendingDown size={12} style={{ color: "var(--pf-down, #ef4444)" }} />
+              <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "var(--pf-down, #ef4444)" }}>Top Losers</span>
+            </div>
+            {topMovers.losers.map((l) => (
+              <div
+                key={l.id}
+                onClick={() => setSelectedId(l.id === selectedId ? null : l.id)}
+                className="flex items-center justify-between py-1.5 px-2 rounded-lg cursor-pointer transition-colors hover:bg-white/5"
+                style={{ borderBottom: "1px solid rgba(255,255,255,0.03)" }}
+              >
+                <div className="flex items-center gap-2">
+                  <div className="w-1.5 h-1.5 rounded-full" style={{ background: "var(--pf-down, #ef4444)" }} />
+                  <span className="text-[11px] font-bold text-white">{l.symbol}</span>
+                </div>
+                <span className="text-[11px] font-bold" style={{ color: "var(--pf-down, #ef4444)" }}>
+                  {l.change.toFixed(2)}%
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
       {/* ═══ Color Legend Bar ═══ */}
       <div className="flex items-center gap-4 px-4 py-2 shrink-0" style={{ background: "rgba(255,255,255,0.015)", borderTop: "1px solid rgba(255,255,255,0.06)" }}>
-        {/* Gradient legend */}
-        <div className="flex items-center gap-2 flex-1">
-          <span className="text-[9px] font-semibold tabular-nums" style={{ color: "rgba(255,255,255,0.45)" }}>-13%</span>
-          <div className="relative flex-1 max-w-[220px] h-3 rounded-full overflow-hidden shadow-inner"
-            style={{ background: `linear-gradient(to right, ${changeColor(-13)}, ${changeColor(-6)}, ${changeColor(-1)}, ${changeColor(0)}, ${changeColor(1)}, ${changeColor(6)}, ${changeColor(13)})` }}>
-            {/* center tick */}
-            <div className="absolute top-0 bottom-0 w-px" style={{ left: "50%", background: "rgba(255,255,255,0.5)" }} />
+        <div className="flex flex-col gap-0.5 flex-1 max-w-[420px]">
+          <div className="relative h-3 rounded-full overflow-hidden shadow-inner"
+            style={{ background: `linear-gradient(to right, ${changeColor(-13)}, ${changeColor(-8)}, ${changeColor(-3)}, ${changeColor(0)}, ${changeColor(3)}, ${changeColor(8)}, ${changeColor(13)})` }}>
+            {[
+              { pct: -10, pos: ((-10 + 13) / 26) * 100 },
+              { pct: -5, pos: ((-5 + 13) / 26) * 100 },
+              { pct: 0, pos: 50 },
+              { pct: 5, pos: ((5 + 13) / 26) * 100 },
+              { pct: 10, pos: ((10 + 13) / 26) * 100 },
+            ].map(({ pct, pos }) => (
+              <div key={pct} className="absolute top-0 bottom-0 w-px" style={{ left: `${pos}%`, background: pct === 0 ? "rgba(255,255,255,0.6)" : "rgba(255,255,255,0.25)" }} />
+            ))}
           </div>
-          <span className="text-[9px] font-semibold tabular-nums" style={{ color: "rgba(255,255,255,0.45)" }}>+13%</span>
-          <div className="flex items-center gap-1.5 ml-2">
-            {["-8%","-3%","0%","+3%","+8%"].map((lbl, i) => (
-              <span key={i} className="text-[8px]" style={{ color: "rgba(255,255,255,0.3)" }}>{lbl}</span>
+          <div className="relative h-3" style={{ fontSize: 8 }}>
+            {[
+              { label: "-13%", pos: 0 },
+              { label: "-10%", pos: ((-10 + 13) / 26) * 100 },
+              { label: "-5%", pos: ((-5 + 13) / 26) * 100 },
+              { label: "0%", pos: 50 },
+              { label: "+5%", pos: ((5 + 13) / 26) * 100 },
+              { label: "+10%", pos: ((10 + 13) / 26) * 100 },
+              { label: "+13%", pos: 100 },
+            ].map(({ label, pos }) => (
+              <span key={label} className="absolute font-semibold tabular-nums" style={{ left: `${pos}%`, transform: "translateX(-50%)", color: "rgba(255,255,255,0.4)" }}>{label}</span>
             ))}
           </div>
         </div>

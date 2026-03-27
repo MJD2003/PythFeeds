@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { fetchCoins, fetchCorrelationInsights } from "@/lib/api/backend";
 import { Loader2, RefreshCw, Info, Settings2, X, Check } from "lucide-react";
 import PythIcon from "@/Components/shared/PythIcon";
@@ -11,7 +11,11 @@ const ALL_AVAILABLE = [
   "APT","ARB","OP","SUI","TIA","JUP","RENDER","WIF","BONK","PYTH",
 ];
 const DEFAULT_SELECTION = ["BTC","ETH","SOL","BNB","XRP","ADA","DOGE","PYTH","AVAX","DOT"];
-const WINDOW = 48;
+const TIMEFRAME_OPTIONS = [
+  { label: "7D", value: 48 },
+  { label: "30D", value: 120 },
+  { label: "90D", value: 168 },
+];
 
 function pearson(a: number[], b: number[]): number {
   const n = Math.min(a.length, b.length);
@@ -31,13 +35,17 @@ function pearson(a: number[], b: number[]): number {
 }
 
 function corrColor(r: number): string {
-  if (r >= 0.8) return "#16c784";
-  if (r >= 0.5) return "#4ade80";
-  if (r >= 0.2) return "#86efac";
-  if (r > -0.2) return "var(--cmc-neutral-3)";
-  if (r > -0.5) return "#fca5a5";
-  if (r > -0.8) return "#f87171";
-  return "#ea3943";
+  const abs = Math.abs(r);
+  if (abs < 0.15) return "#6b7280";
+  if (r > 0) return abs > 0.7 ? "#059669" : abs > 0.4 ? "#10b981" : "#34d399";
+  return abs > 0.7 ? "#dc2626" : abs > 0.4 ? "#ef4444" : "#f87171";
+}
+
+function corrBg(r: number, hovered: boolean): string {
+  const abs = Math.abs(r);
+  if (abs < 0.05) return "transparent";
+  const alpha = (abs * (hovered ? 0.4 : 0.25) + 0.05).toFixed(2);
+  return r >= 0 ? `rgba(5,150,105,${alpha})` : `rgba(220,38,38,${alpha})`;
 }
 
 function corrLabel(r: number): string {
@@ -61,6 +69,8 @@ export default function CorrelationPage() {
   const [aiInsights, setAiInsights] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
+  const [timeframe, setTimeframe] = useState(48);
+  const [strengthFilter, setStrengthFilter] = useState(false);
 
   const toggleSymbol = (sym: string) => {
     setSelected(prev =>
@@ -87,7 +97,7 @@ export default function CorrelationPage() {
       const sparklines: Record<string, number[]> = {};
       for (const c of relevant) {
         const sp = (c as any).sparkline_in_7d?.price;
-        if (sp && sp.length > 0) sparklines[c.symbol.toUpperCase()] = sp.slice(-WINDOW);
+        if (sp && sp.length > 0) sparklines[c.symbol.toUpperCase()] = sp.slice(-timeframe);
       }
 
       const symbols = Object.keys(sparklines);
@@ -104,9 +114,26 @@ export default function CorrelationPage() {
   };
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { compute(); }, []);
+  useEffect(() => { compute(); }, [timeframe]);
 
   const symbols = matrix.map(r => r.symbol);
+
+  const summary = useMemo(() => {
+    if (matrix.length < 2) return null;
+    const syms = matrix.map(r => r.symbol);
+    let bestPos = { a: "", b: "", r: -Infinity };
+    let bestNeg = { a: "", b: "", r: Infinity };
+    let bestZero = { a: "", b: "", r: Infinity, absR: Infinity };
+    for (let i = 0; i < matrix.length; i++) {
+      for (let j = i + 1; j < syms.length; j++) {
+        const v = matrix[i].correlations[syms[j]] ?? 0;
+        if (v > bestPos.r) bestPos = { a: matrix[i].symbol, b: syms[j], r: v };
+        if (v < bestNeg.r) bestNeg = { a: matrix[i].symbol, b: syms[j], r: v };
+        if (Math.abs(v) < bestZero.absR) bestZero = { a: matrix[i].symbol, b: syms[j], r: v, absR: Math.abs(v) };
+      }
+    }
+    return { bestPos, bestNeg, bestZero };
+  }, [matrix]);
 
   return (
     <div className="min-h-screen" style={{ background: "var(--cmc-bg)" }}>
@@ -116,7 +143,7 @@ export default function CorrelationPage() {
           <div>
             <h1 className="text-3xl font-bold font-display tracking-tight mb-1" style={{ color: "var(--cmc-text)" }}>Correlation Matrix</h1>
             <p className="text-xs" style={{ color: "var(--cmc-neutral-5)" }}>
-              Pearson correlation of 7-day price movements · {selected.length} assets
+              Pearson correlation · {TIMEFRAME_OPTIONS.find(t => t.value === timeframe)?.label || "7D"} window · {selected.length} assets
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -136,6 +163,36 @@ export default function CorrelationPage() {
               Refresh
             </button>
           </div>
+        </div>
+
+        {/* Timeframe & Strength filter */}
+        <div className="flex flex-wrap items-center gap-3 mb-4">
+          <div className="flex items-center gap-1">
+            <span className="text-[11px] font-medium mr-1" style={{ color: "var(--cmc-neutral-5)" }}>Timeframe:</span>
+            {TIMEFRAME_OPTIONS.map(tf => (
+              <button key={tf.label} onClick={() => setTimeframe(tf.value)}
+                className="px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all"
+                style={{
+                  background: timeframe === tf.value ? "var(--pf-accent)" : "transparent",
+                  color: timeframe === tf.value ? "#fff" : "var(--cmc-neutral-5)",
+                  border: `1px solid ${timeframe === tf.value ? "var(--pf-accent)" : "var(--cmc-border)"}`,
+                }}
+              >{tf.label}</button>
+            ))}
+          </div>
+          <div className="w-px h-5" style={{ background: "var(--cmc-border)" }} />
+          <button
+            onClick={() => setStrengthFilter(f => !f)}
+            className="flex items-center gap-1.5 px-3 py-1 rounded-lg text-[11px] font-semibold transition-all"
+            style={{
+              background: strengthFilter ? "rgba(153,69,255,0.12)" : "transparent",
+              color: strengthFilter ? "var(--pf-accent)" : "var(--cmc-neutral-5)",
+              border: `1px solid ${strengthFilter ? "var(--pf-accent)" : "var(--cmc-border)"}`,
+            }}
+          >
+            {strengthFilter ? <Check size={11} /> : null}
+            Strong only (|r| &gt; 0.7)
+          </button>
         </div>
 
         {/* Asset picker panel */}
@@ -168,11 +225,11 @@ export default function CorrelationPage() {
         <div className="flex items-center gap-3 mb-4 flex-wrap">
           <span className="text-[11px] font-medium" style={{ color: "var(--cmc-neutral-5)" }}>Correlation:</span>
           {[
-            { label: "Strong +", color: "#16c784" },
-            { label: "Moderate +", color: "#4ade80" },
-            { label: "None", color: "var(--cmc-neutral-3)" },
-            { label: "Moderate −", color: "#f87171" },
-            { label: "Strong −", color: "#ea3943" },
+            { label: "Strong +", color: "#059669" },
+            { label: "Moderate +", color: "#10b981" },
+            { label: "None", color: "#6b7280" },
+            { label: "Moderate −", color: "#ef4444" },
+            { label: "Strong −", color: "#dc2626" },
           ].map(l => (
             <div key={l.label} className="flex items-center gap-1">
               <div className="w-3 h-3 rounded-sm" style={{ background: l.color }} />
@@ -237,11 +294,12 @@ export default function CorrelationPage() {
                             className="text-center p-2 cursor-default transition-all"
                             title={`${row.symbol} vs ${sym}: ${r.toFixed(3)} (${corrLabel(r)})`}
                             style={{
-                              background: isDiag ? "rgba(153,69,255,0.15)" : corrColor(r) + (isHov ? "33" : "22"),
+                              background: isDiag ? "rgba(153,69,255,0.15)" : corrBg(r, isHov),
                               borderBottom: "1px solid var(--cmc-border)",
                               borderRight: "1px solid var(--cmc-border)",
                               outline: isHov ? `2px solid ${corrColor(r)}` : undefined,
                               outlineOffset: "-2px",
+                              opacity: strengthFilter && !isDiag && Math.abs(r) <= 0.7 ? 0.25 : 1,
                             }}
                           >
                             <span className="font-mono font-bold text-[11px]" style={{ color: isDiag ? "var(--pf-accent)" : corrColor(r) }}>
@@ -269,6 +327,27 @@ export default function CorrelationPage() {
               r = {(matrix[hovered.r].correlations[symbols[hovered.c]] ?? 0).toFixed(4)} —{" "}
               {corrLabel(matrix[hovered.r].correlations[symbols[hovered.c]] ?? 0)} correlation over the last 7 days.
             </span>
+          </div>
+        )}
+
+        {/* Correlation Summary */}
+        {!loading && summary && (
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 mt-4">
+            <div className="rounded-xl px-4 py-3" style={{ background: "var(--cmc-neutral-1)", border: "1px solid var(--cmc-border)" }}>
+              <p className="text-[10px] font-semibold uppercase tracking-wider mb-1" style={{ color: "#059669" }}>Strongest Positive</p>
+              <p className="text-sm font-bold" style={{ color: "var(--cmc-text)" }}>{summary.bestPos.a} × {summary.bestPos.b}</p>
+              <p className="text-xs font-mono font-bold" style={{ color: "#059669" }}>{summary.bestPos.r.toFixed(4)}</p>
+            </div>
+            <div className="rounded-xl px-4 py-3" style={{ background: "var(--cmc-neutral-1)", border: "1px solid var(--cmc-border)" }}>
+              <p className="text-[10px] font-semibold uppercase tracking-wider mb-1" style={{ color: "#dc2626" }}>Strongest Negative</p>
+              <p className="text-sm font-bold" style={{ color: "var(--cmc-text)" }}>{summary.bestNeg.a} × {summary.bestNeg.b}</p>
+              <p className="text-xs font-mono font-bold" style={{ color: "#dc2626" }}>{summary.bestNeg.r.toFixed(4)}</p>
+            </div>
+            <div className="rounded-xl px-4 py-3" style={{ background: "var(--cmc-neutral-1)", border: "1px solid var(--cmc-border)" }}>
+              <p className="text-[10px] font-semibold uppercase tracking-wider mb-1" style={{ color: "var(--cmc-neutral-5)" }}>Most Uncorrelated</p>
+              <p className="text-sm font-bold" style={{ color: "var(--cmc-text)" }}>{summary.bestZero.a} × {summary.bestZero.b}</p>
+              <p className="text-xs font-mono font-bold" style={{ color: "var(--cmc-neutral-5)" }}>{summary.bestZero.r.toFixed(4)}</p>
+            </div>
           </div>
         )}
 
@@ -348,7 +427,7 @@ export default function CorrelationPage() {
         )}
 
         <p className="mt-6 text-[10px]" style={{ color: "var(--cmc-neutral-4)" }}>
-          Based on hourly Pyth/CoinGecko prices from 7-day sparklines. Correlation ranges from −1 (inverse) to +1 (identical). Data refreshes on page load.
+          Based on hourly Pyth/CoinGecko sparkline data. Correlation ranges from −1 (inverse) to +1 (identical). Data refreshes on page load.
         </p>
       </div>
     </div>

@@ -528,6 +528,9 @@ export interface CalendarEvent {
   date: string;
   timestamp: number;
   daysUntil: number;
+  actual: string | null;
+  forecast: string | null;
+  previous: string | null;
 }
 
 // ── Watchlist (MySQL-backed) ──

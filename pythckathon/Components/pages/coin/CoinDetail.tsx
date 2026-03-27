@@ -213,12 +213,12 @@ export default function CoinDetail({ info, trendingCoins = [] }: CoinDetailProps
   }, [refreshPythPrice]);
 
   const md = info.market_data;
-  const change24h = md.price_change_percentage_24h;
+  const change24h = md?.price_change_percentage_24h ?? 0;
   const isUp = change24h >= 0;
-  const current = livePrice ?? md.current_price.usd;
-  const sym = info.symbol.toUpperCase();
+  const current = livePrice ?? md?.current_price?.usd ?? 0;
+  const sym = (info.symbol || "").toUpperCase();
 
-  const volMktCapRatio = md.total_volume.usd / md.market_cap.usd * 100;
+  const volMktCapRatio = md?.market_cap?.usd ? (md.total_volume.usd / md.market_cap.usd * 100) : 0;
   const dollarChange = current * (change24h / 100);
 
   return (

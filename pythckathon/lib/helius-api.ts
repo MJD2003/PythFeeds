@@ -308,7 +308,8 @@ async function fetchPythOraclePrice(symbol: string): Promise<number> {
   const feedId = FEED_IDS[symbol];
   if (!feedId) return 0;
   try {
-    const res = await fetch(`https://hermes.pyth.network/v2/updates/price/latest?ids[]=${feedId}`);
+    const hermesUrl = process.env.NEXT_PUBLIC_PYTH_HERMES_URL || "https://hermes.pyth.network";
+    const res = await fetch(`${hermesUrl}/v2/updates/price/latest?ids[]=${feedId}`);
     if (!res.ok) return 0;
     const data = await res.json();
     const parsed = data?.parsed?.[0]?.price;

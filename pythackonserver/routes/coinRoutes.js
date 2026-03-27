@@ -13,6 +13,7 @@ router.get("/simple-prices", ctrl.simplePrices);
 router.get("/by-ids", ctrl.coinsByIds);
 router.get("/meme-bubbles", ctrl.memeBubbles);
 router.get("/", ctrl.list);
+router.get("/:id/pyth-history", ctrl.pythHistory);
 router.get("/:id/ohlc", ctrl.ohlc);
 router.get("/:id/chart", ctrl.chart);
 router.get("/:id", ctrl.detail);

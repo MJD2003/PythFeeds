@@ -4,7 +4,12 @@
  * Prices fetched/streamed directly by feed ID — no hardcoded IDs needed.
  */
 
-const HERMES = "https://hermes.pyth.network";
+const HERMES = process.env.NEXT_PUBLIC_PYTH_HERMES_URL || "https://hermes.pyth.network";
+const PYTH_API_KEY = process.env.NEXT_PUBLIC_PYTH_API_KEY || "";
+function hermesUrl(path: string): string {
+  const sep = path.includes("?") ? "&" : "?";
+  return PYTH_API_KEY ? `${HERMES}${path}${sep}api_key=${PYTH_API_KEY}` : `${HERMES}${path}`;
+}
 
 /* ── Types ── */
 
@@ -35,7 +40,7 @@ const CACHE_TTL = 5 * 60 * 1000; // 5 min
 export async function fetchAllPythFeeds(): Promise<PythFeedMeta[]> {
   if (_cachedFeeds && Date.now() - _cacheTime < CACHE_TTL) return _cachedFeeds;
 
-  const res = await fetch(`${HERMES}/v2/price_feeds`);
+  const res = await fetch(hermesUrl("/v2/price_feeds"));
   if (!res.ok) throw new Error(`Hermes catalog fetch failed: ${res.status}`);
   const raw: Array<{
     id: string;
@@ -93,7 +98,7 @@ export async function fetchPricesByIds(
       try {
         const idsParam = chunk.map((id) => `ids[]=0x${id}`).join("&");
         const res = await fetch(
-          `${HERMES}/v2/updates/price/latest?${idsParam}`
+          hermesUrl(`/v2/updates/price/latest?${idsParam}`)
         );
         if (!res.ok) return;
         const data = await res.json();
@@ -135,7 +140,7 @@ export function subscribePriceStream(
   if (feedIds.length === 0) return () => {};
 
   const idsParam = feedIds.map((id) => `ids[]=0x${id}`).join("&");
-  const url = `${HERMES}/v2/updates/price/stream?${idsParam}&encoding=json&parsed=true`;
+  const url = hermesUrl(`/v2/updates/price/stream?${idsParam}&encoding=json&parsed=true`);
 
   let es: EventSource | null = null;
   try {

@@ -142,10 +142,39 @@ ${headlineBlock}`;
 /**
  * Generic AI Chatbot for platform queries
  */
+const PYTHFEEDS_KNOWLEDGE_BASE = `
+--- PYTHFEEDS PLATFORM KNOWLEDGE BASE ---
+
+About PythFeeds:
+PythFeeds is a real-time market data platform powered by Pyth Network oracles. It aggregates live prices, analytics, and news for crypto, stocks, forex, and commodities. Users can track portfolios, set price alerts, view correlation matrices, compare assets, explore DeFi yields, read AI-powered market digests, and swap tokens.
+
+About Pyth Network:
+Pyth Network is a first-party oracle network that publishes financial market data on-chain. Unlike traditional oracles that rely on third-party data aggregators, Pyth sources data directly from exchanges, market makers, and trading firms. This gives sub-second update latency and high-fidelity pricing.
+
+Understanding Pyth Confidence Intervals:
+Each Pyth price feed includes a confidence interval (±). This represents the uncertainty in the aggregate price. A tight confidence (e.g. ±0.01%) means strong agreement among data publishers. A wide confidence (e.g. ±0.5%) may indicate low liquidity, market volatility, or publisher disagreement. Users should treat wide confidence as a caution signal.
+
+Platform Features You Can Reference:
+- Homepage: Live crypto rankings with prices, market cap, volume, and 24h changes
+- Coin/Stock Detail Pages: In-depth price charts, AI analysis, and news for individual assets
+- Portfolio Tracker: Track holdings, see diversification scores, and get AI portfolio insights
+- Correlation Matrix: Visualize how assets move together or diverge
+- Market Heatmap: Color-coded grid showing sector/asset performance at a glance
+- Economic Calendar: Upcoming macro events (FOMC, CPI, NFP) that impact markets
+- Pyth Price Feeds: Browse all Pyth oracle feeds with live prices and confidence data
+- DeFi Yields: Top yield opportunities across chains with APY and TVL data
+- Fear & Greed Index: Market sentiment gauge from 0 (Extreme Fear) to 100 (Extreme Greed)
+- AI Daily Digest: AI-generated daily market summary with trends and outlook
+- Token Swap: Swap tokens directly within the platform
+- Price Alerts: Set custom price alerts for any asset
+- News Feed: Aggregated crypto news with AI-powered summaries and sentiment tags
+`;
+
 async function chat(message, history = [], marketContext = "") {
   try {
     const m = getModel();
-    const sysText = `You are PythFeeds AI, a helpful, concise, and expert financial market assistant. You provide insights on crypto, stocks, metals, forex, and general market trends. Do not provide financial advice. Keep answers brief, formatted with markdown when appropriate, and easy to read. You are aware of Pyth Network, a leading oracle network for real-time market data. You have access to real-time market context to answer live queries.${marketContext ? `\n\n${marketContext}` : ""}`;
+    const sysText = `You are PythFeeds AI, a helpful, concise, and expert financial market assistant embedded in the PythFeeds platform. You provide insights on crypto, stocks, metals, forex, and general market trends. Do not provide financial advice. Keep answers brief, formatted with markdown when appropriate, and easy to read. You have access to real-time market context to answer live queries. When users ask about platform features, guide them to the relevant page.
+${PYTHFEEDS_KNOWLEDGE_BASE}${marketContext ? `\n${marketContext}` : ""}`;
 
     const chatSession = m.startChat({
       history: history.map(msg => ({
@@ -198,7 +227,8 @@ Instructions:
  */
 async function* chatStream(message, history = [], marketContext = "") {
   const m = getModel();
-  const sysText = `You are PythFeeds AI, a helpful, concise, and expert financial market assistant. You provide insights on crypto, stocks, metals, forex, and general market trends. Do not provide financial advice. Keep answers brief, formatted with markdown when appropriate, and easy to read. You are aware of Pyth Network, a leading oracle network for real-time market data.${marketContext ? `\n\n${marketContext}` : ""}`;
+  const sysText = `You are PythFeeds AI, a helpful, concise, and expert financial market assistant embedded in the PythFeeds platform. You provide insights on crypto, stocks, metals, forex, and general market trends. Do not provide financial advice. Keep answers brief, formatted with markdown when appropriate, and easy to read. You have access to real-time market context to answer live queries. When users ask about platform features, guide them to the relevant page.
+${PYTHFEEDS_KNOWLEDGE_BASE}${marketContext ? `\n${marketContext}` : ""}`;
 
   const chatSession = m.startChat({
     history: history.map(msg => ({

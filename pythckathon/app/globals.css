@@ -511,6 +511,15 @@
   scrollbar-color: var(--cmc-neutral-3) transparent;
 }
 
+/* Hide scrollbar completely */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
 /* ═══════════════════════════════════════════════════════
    Page transition animation
    ═══════════════════════════════════════════════════════ */

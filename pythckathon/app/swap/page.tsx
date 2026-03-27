@@ -30,7 +30,6 @@ import { getKaminoSwapQuote, signKaminoSwapTx, type KaminoSwapQuote } from "@/li
 import { scanWallet, type WalletToken } from "@/lib/wallet-scanner";
 import { fetchPythPricesBatch } from "@/lib/pyth-prices";
 import { BorderBeam } from "@/Components/magicui/border-beam";
-import { Particles } from "@/Components/magicui/particles";
 import { getSwapHistory, addSwapRecord, clearSwapHistory, syncSwapHistoryFromBackend, type SwapRecord, getRecentPairs, saveRecentPair, type RecentPair } from "@/lib/swap-history";
 import { getExpressRelayQuote, type ExpressRelayQuote } from "@/lib/express-relay";
 import { getRaydiumSwapQuote, signRaydiumSwapTx, type RaydiumSwapQuote } from "@/lib/raydium-swap";

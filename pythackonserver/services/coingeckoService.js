@@ -3,6 +3,38 @@ const { cache, staleCache, CACHE_TTL } = require("../config/cache");
 
 const BASE_URL = process.env.COINGECKO_API_URL || "https://api.coingecko.com/api/v3";
 
+// Global throttle: serialize CoinGecko requests with a minimum gap (free tier = ~10/min)
+let lastRequestTime = 0;
+const MIN_REQUEST_GAP = 2500;
+const requestQueue = [];
+let queueRunning = false;
+
+async function runQueue() {
+  if (queueRunning) return;
+  queueRunning = true;
+  while (requestQueue.length > 0) {
+    const { resolve, reject, fn } = requestQueue.shift();
+    const elapsed = Date.now() - lastRequestTime;
+    if (elapsed < MIN_REQUEST_GAP) {
+      await new Promise(r => setTimeout(r, MIN_REQUEST_GAP - elapsed));
+    }
+    try {
+      lastRequestTime = Date.now();
+      resolve(await fn());
+    } catch (err) {
+      reject(err);
+    }
+  }
+  queueRunning = false;
+}
+
+function enqueue(fn) {
+  return new Promise((resolve, reject) => {
+    requestQueue.push({ resolve, reject, fn });
+    runQueue();
+  });
+}
+
 // In-flight request deduplication — prevents concurrent identical requests
 const inFlight = new Map();
 
@@ -27,28 +59,25 @@ async function fetchWithCache(key, url, ttl, params = {}) {
 }
 
 async function _fetchWithCacheInner(key, url, ttl, params) {
-  // 2. Try network with retry + exponential backoff for rate limits
+  // 2. Try network via throttled queue with retry
   let lastErr;
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
-      const { data } = await axios.get(url, {
-        params,
-        headers: { Accept: "application/json" },
-        timeout: 15000,
-      });
+      const { data } = await enqueue(() =>
+        axios.get(url, { params, headers: { Accept: "application/json" }, timeout: 15000 })
+      );
       cache.set(key, data, ttl);
       staleCache.set(key, data);
       return data;
     } catch (err) {
       lastErr = err;
       const status = err.response?.status;
-      // Rate-limited (429) — back off longer
       if (status === 429) {
-        const wait = Math.min(2000 * Math.pow(2, attempt), 10000);
+        const wait = Math.min(3000 * Math.pow(2, attempt), 15000);
         console.warn(`[CoinGecko] 429 rate-limited on ${key}, waiting ${wait}ms (attempt ${attempt + 1})`);
         await new Promise((r) => setTimeout(r, wait));
       } else if (attempt < 2) {
-        await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
+        await new Promise((r) => setTimeout(r, 2000 * (attempt + 1)));
       }
     }
   }

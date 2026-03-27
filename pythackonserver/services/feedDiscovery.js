@@ -3,11 +3,16 @@ const { HermesClient } = require("@pythnetwork/hermes-client");
 const { cache } = require("../config/cache");
 
 const HERMES_URL = process.env.PYTH_HERMES_URL || "https://hermes.pyth.network";
+const PYTH_API_KEY = process.env.PYTH_API_KEY || "";
 const DISCOVERY_CACHE_TTL = 1800; // 30 minutes
 
 let _hermes = null;
 function hermes() {
-  if (!_hermes) _hermes = new HermesClient(HERMES_URL);
+  if (!_hermes) {
+    const opts = { timeout: 15000 };
+    if (PYTH_API_KEY) opts.headers = { "x-api-key": PYTH_API_KEY };
+    _hermes = new HermesClient(HERMES_URL, opts);
+  }
   return _hermes;
 }
 
@@ -20,8 +25,11 @@ async function fetchFeedsByType(assetType) {
   if (cached) return cached;
 
   try {
+    const axiosHeaders = {};
+    if (PYTH_API_KEY) axiosHeaders["x-api-key"] = PYTH_API_KEY;
     const { data } = await axios.get(`${HERMES_URL}/v2/price_feeds`, {
       params: { asset_type: assetType },
+      headers: axiosHeaders,
       timeout: 15000,
     });
     if (Array.isArray(data)) {

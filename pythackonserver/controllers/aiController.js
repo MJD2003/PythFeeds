@@ -51,97 +51,106 @@ async function marketBrief(req, res, next) {
   }
 }
 
+async function buildMarketContext(pageContext) {
+  let marketContext = "";
+  try {
+    const dataService = require("../services/dataService");
+    const { cache: ctxCache } = require("../config/cache");
+    const [global, trending, topCoins, yields] = await Promise.allSettled([
+      cgService.getGlobal(),
+      cgService.getTrending(),
+      cgService.getCoinsMarkets(1, 50),
+      dataService.getYields(5).catch(() => []),
+    ]);
+
+    const globalVal = global.status === "fulfilled" ? global.value : null;
+    const trendingVal = trending.status === "fulfilled" ? trending.value : null;
+    const topCoinsVal = topCoins.status === "fulfilled" ? topCoins.value : [];
+    const yieldsVal = yields.status === "fulfilled" ? yields.value : [];
+
+    marketContext = `--- LIVE MARKET CONTEXT (${new Date().toISOString()}) ---\n`;
+
+    const fgCached = ctxCache.get("fear_greed_1");
+    if (fgCached) {
+      marketContext += `- Fear & Greed Index: ${fgCached.value}/100 (${fgCached.classification})\n`;
+    }
+
+    if (globalVal?.data) {
+      marketContext += `- Global Crypto Market Cap: $${(globalVal.data.total_market_cap?.usd / 1e9).toFixed(2)}B\n`;
+      marketContext += `- 24h Volume: $${(globalVal.data.total_volume?.usd / 1e9).toFixed(2)}B\n`;
+      marketContext += `- BTC Dominance: ${globalVal.data.market_cap_percentage?.btc?.toFixed(1)}%\n`;
+    }
+    if (trendingVal?.coins) {
+      marketContext += `- Trending Coins: ${trendingVal.coins.slice(0, 5).map(c => c.item.name).join(", ")}\n`;
+    }
+    if (topCoinsVal && topCoinsVal.length) {
+      const top10 = topCoinsVal.slice(0, 10);
+      const gainers = [...topCoinsVal].sort((a, b) => (b.price_change_percentage_24h || 0) - (a.price_change_percentage_24h || 0)).slice(0, 3);
+      
+      marketContext += `- Top 10 Coins by Market Cap:\n${top10.map(c => `  * ${c.symbol.toUpperCase()}: $${c.current_price} (24h: ${c.price_change_percentage_24h?.toFixed(2)}%)`).join("\n")}\n`;
+      marketContext += `- Top Gainers (from top 50):\n${gainers.map(c => `  * ${c.symbol.toUpperCase()}: +${c.price_change_percentage_24h?.toFixed(2)}%`).join("\n")}\n`;
+    }
+    if (yieldsVal.length > 0) {
+      marketContext += `- Top DeFi Yields: ${yieldsVal.slice(0, 3).map(y => `${y.project}: ${y.apy?.toFixed(1)}% APY`).join(", ")}\n`;
+    }
+  } catch (err) {
+    console.error("[AI Controller] Failed to fetch market context:", err.message);
+  }
+
+  try {
+    const HERMES = process.env.PYTH_HERMES_URL || "https://hermes.pyth.network";
+    const PYTH_KEY = process.env.PYTH_API_KEY || "";
+    const pythFeeds = {
+      BTC: "e62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43",
+      ETH: "ff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace",
+      SOL: "ef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d",
+    };
+    const idsParam = Object.values(pythFeeds).map(id => `ids[]=0x${id}`).join("&");
+    const fetchHeaders = {};
+    if (PYTH_KEY) fetchHeaders["x-api-key"] = PYTH_KEY;
+    const pythRes = await fetch(`${HERMES}/v2/updates/price/latest?${idsParam}`, { headers: fetchHeaders });
+    if (pythRes.ok) {
+      const pythData = await pythRes.json();
+      if (pythData?.parsed?.length) {
+        marketContext += `- Pyth Oracle Prices:\n`;
+        for (const feed of pythData.parsed) {
+          const p = feed.price;
+          if (!p) continue;
+          const expo = Number(p.expo);
+          const price = Number(p.price) * Math.pow(10, expo);
+          const conf = Number(p.conf) * Math.pow(10, expo);
+          const confPct = price > 0 ? ((conf / price) * 100).toFixed(4) : "N/A";
+          const sym = Object.entries(pythFeeds).find(([, id]) => id === feed.id)?.[0] || feed.id;
+          marketContext += `  * ${sym}: $${price.toLocaleString()} (confidence: ±${confPct}%)\n`;
+        }
+      }
+    }
+  } catch {}
+
+  if (pageContext && typeof pageContext === "object") {
+    marketContext += `\n--- USER PAGE CONTEXT ---\n`;
+    if (pageContext.page) marketContext += `- Current page: ${pageContext.page}\n`;
+    if (pageContext.symbol) marketContext += `- Viewing asset: ${pageContext.symbol}\n`;
+    if (pageContext.price) marketContext += `- Current price: $${pageContext.price}\n`;
+    if (pageContext.change24h) marketContext += `- 24h change: ${pageContext.change24h}%\n`;
+    if (pageContext.marketCap) marketContext += `- Market cap: $${pageContext.marketCap}\n`;
+    if (pageContext.extra) marketContext += `- Extra: ${pageContext.extra}\n`;
+
+    if (pageContext.page === "calendar") marketContext += `- Note: User is viewing the Economic Calendar page.\n`;
+    if (pageContext.page === "heatmap") marketContext += `- Note: User is viewing the Market Heatmap.\n`;
+    if (pageContext.page === "feeds") marketContext += `- Note: User is viewing Pyth Price Feeds.\n`;
+    if (pageContext.symbol) marketContext += `- Note: User is viewing the ${pageContext.symbol} detail page.\n`;
+  }
+
+  return marketContext;
+}
+
 async function chat(req, res, next) {
   try {
     const { message, history, pageContext } = req.body;
     if (!message) return res.status(400).json({ error: "message is required" });
 
-    // Fetch live context for the AI
-    let marketContext = "";
-    try {
-      const dataService = require("../services/dataService");
-      const { cache: ctxCache } = require("../config/cache");
-      const [global, trending, topCoins, yields] = await Promise.allSettled([
-        cgService.getGlobal(),
-        cgService.getTrending(),
-        cgService.getCoinsMarkets(1, 50),
-        dataService.getYields(5).catch(() => []),
-      ]);
-
-      const globalVal = global.status === "fulfilled" ? global.value : null;
-      const trendingVal = trending.status === "fulfilled" ? trending.value : null;
-      const topCoinsVal = topCoins.status === "fulfilled" ? topCoins.value : [];
-      const yieldsVal = yields.status === "fulfilled" ? yields.value : [];
-
-      marketContext = `--- LIVE MARKET CONTEXT (${new Date().toISOString()}) ---\n`;
-
-      // Fear & Greed from cache
-      const fgCached = ctxCache.get("fear_greed_1");
-      if (fgCached) {
-        marketContext += `- Fear & Greed Index: ${fgCached.value}/100 (${fgCached.classification})\n`;
-      }
-
-      if (globalVal?.data) {
-        marketContext += `- Global Crypto Market Cap: $${(globalVal.data.total_market_cap?.usd / 1e9).toFixed(2)}B\n`;
-        marketContext += `- 24h Volume: $${(globalVal.data.total_volume?.usd / 1e9).toFixed(2)}B\n`;
-        marketContext += `- BTC Dominance: ${globalVal.data.market_cap_percentage?.btc?.toFixed(1)}%\n`;
-      }
-      if (trendingVal?.coins) {
-        marketContext += `- Trending Coins: ${trendingVal.coins.slice(0, 5).map(c => c.item.name).join(", ")}\n`;
-      }
-      if (topCoinsVal && topCoinsVal.length) {
-        const top10 = topCoinsVal.slice(0, 10);
-        const gainers = [...topCoinsVal].sort((a, b) => (b.price_change_percentage_24h || 0) - (a.price_change_percentage_24h || 0)).slice(0, 3);
-        
-        marketContext += `- Top 10 Coins by Market Cap:\n${top10.map(c => `  * ${c.symbol.toUpperCase()}: $${c.current_price} (24h: ${c.price_change_percentage_24h?.toFixed(2)}%)`).join("\n")}\n`;
-        marketContext += `- Top Gainers (from top 50):\n${gainers.map(c => `  * ${c.symbol.toUpperCase()}: +${c.price_change_percentage_24h?.toFixed(2)}%`).join("\n")}\n`;
-      }
-      if (yieldsVal.length > 0) {
-        marketContext += `- Top DeFi Yields: ${yieldsVal.slice(0, 3).map(y => `${y.project}: ${y.apy?.toFixed(1)}% APY`).join(", ")}\n`;
-      }
-    } catch (err) {
-      console.error("[AI Controller] Failed to fetch market context:", err.message);
-    }
-
-    // Pyth oracle confidence data
-    try {
-      const HERMES = "https://hermes.pyth.network";
-      const pythFeeds = {
-        BTC: "e62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43",
-        ETH: "ff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace",
-        SOL: "ef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d",
-      };
-      const idsParam = Object.values(pythFeeds).map(id => `ids[]=0x${id}`).join("&");
-      const pythRes = await fetch(`${HERMES}/v2/updates/price/latest?${idsParam}`);
-      if (pythRes.ok) {
-        const pythData = await pythRes.json();
-        if (pythData?.parsed?.length) {
-          marketContext += `- Pyth Oracle Prices:\n`;
-          for (const feed of pythData.parsed) {
-            const p = feed.price;
-            if (!p) continue;
-            const expo = Number(p.expo);
-            const price = Number(p.price) * Math.pow(10, expo);
-            const conf = Number(p.conf) * Math.pow(10, expo);
-            const confPct = price > 0 ? ((conf / price) * 100).toFixed(4) : "N/A";
-            const sym = Object.entries(pythFeeds).find(([, id]) => id === feed.id)?.[0] || feed.id;
-            marketContext += `  * ${sym}: $${price.toLocaleString()} (confidence: ±${confPct}%)\n`;
-          }
-        }
-      }
-    } catch {}
-
-    // Inject page context if provided by frontend
-    if (pageContext && typeof pageContext === "object") {
-      marketContext += `\n--- USER PAGE CONTEXT ---\n`;
-      if (pageContext.page) marketContext += `- Current page: ${pageContext.page}\n`;
-      if (pageContext.symbol) marketContext += `- Viewing asset: ${pageContext.symbol}\n`;
-      if (pageContext.price) marketContext += `- Current price: $${pageContext.price}\n`;
-      if (pageContext.change24h) marketContext += `- 24h change: ${pageContext.change24h}%\n`;
-      if (pageContext.marketCap) marketContext += `- Market cap: $${pageContext.marketCap}\n`;
-      if (pageContext.extra) marketContext += `- Extra: ${pageContext.extra}\n`;
-    }
-
+    const marketContext = await buildMarketContext(pageContext);
     const reply = await aiService.chat(message, history || [], marketContext);
     res.json({ reply });
   } catch (err) {
@@ -166,30 +175,7 @@ async function chatStream(req, res, next) {
     const { message, history, pageContext } = req.body;
     if (!message) return res.status(400).json({ error: "message is required" });
 
-    let marketContext = "";
-    try {
-      const global = await cgService.getGlobal();
-      const topCoins = await cgService.getCoinsMarkets(1, 20);
-      if (global?.data) {
-        marketContext = `--- LIVE MARKET CONTEXT ---\n`;
-        marketContext += `- Global Crypto Market Cap: $${(global.data.total_market_cap?.usd / 1e9).toFixed(2)}B\n`;
-        marketContext += `- 24h Volume: $${(global.data.total_volume?.usd / 1e9).toFixed(2)}B\n`;
-      }
-      if (topCoins && topCoins.length) {
-        const top5 = topCoins.slice(0, 5);
-        marketContext += `- Top 5: ${top5.map(c => `${c.symbol.toUpperCase()}: $${c.current_price}`).join(", ")}\n`;
-      }
-    } catch {}
-
-    // Inject page context if provided by frontend
-    if (pageContext && typeof pageContext === "object") {
-      marketContext += `\n--- USER PAGE CONTEXT ---\n`;
-      if (pageContext.page) marketContext += `- Current page: ${pageContext.page}\n`;
-      if (pageContext.symbol) marketContext += `- Viewing asset: ${pageContext.symbol}\n`;
-      if (pageContext.price) marketContext += `- Current price: $${pageContext.price}\n`;
-      if (pageContext.change24h) marketContext += `- 24h change: ${pageContext.change24h}%\n`;
-      if (pageContext.extra) marketContext += `- Extra: ${pageContext.extra}\n`;
-    }
+    const marketContext = await buildMarketContext(pageContext);
 
     res.writeHead(200, {
       "Content-Type": "text/event-stream",

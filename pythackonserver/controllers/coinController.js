@@ -348,4 +348,70 @@ async function memeBubbles(req, res, next) {
   }
 }
 
-module.exports = { list, detail, ohlc, chart, global, trending, stream, fearGreed, exchanges, categories, gas, simplePrices, coinsByIds, memeBubbles };
+/**
+ * GET /api/coins/:feedId/pyth-history
+ * Fetch historical prices from Pyth Benchmarks API
+ */
+async function pythHistory(req, res, next) {
+  try {
+    const feedId = req.params.id;
+    if (!feedId || feedId.length < 10) {
+      return res.status(400).json({ error: "Invalid feed ID", received: feedId });
+    }
+
+    const now = Math.floor(Date.now() / 1000);
+    const from = parseInt(req.query.from) || now - 86400;
+    const to = parseInt(req.query.to) || now;
+    const interval = Math.max(parseInt(req.query.interval) || 300, 60);
+
+    const cacheKey = `pyth_history_${feedId}_${from}_${to}_${interval}`;
+    const cached = cache.get(cacheKey);
+    if (cached) return res.json(cached);
+
+    const BENCHMARKS = "https://benchmarks.pyth.network";
+    const cleanId = feedId.replace(/^0x/, "");
+    const points = [];
+    const maxPoints = 300;
+    let ts = from;
+    let fetched = 0;
+    let errors = 0;
+
+    console.log(`[PythHistory] Fetching feed 0x${cleanId} from ${new Date(from * 1000).toISOString()} to ${new Date(to * 1000).toISOString()}, interval ${interval}s`);
+
+    while (ts <= to && fetched < maxPoints && errors < 5) {
+      try {
+        const url = `${BENCHMARKS}/v1/updates/price/${ts}?ids[]=0x${cleanId}&parsed=true`;
+        const resp = await axios.get(url, { timeout: 8000 });
+        if (resp.data?.parsed?.length) {
+          for (const feed of resp.data.parsed) {
+            const p = feed.price || feed.ema_price;
+            if (!p) continue;
+            const expo = Number(p.expo);
+            const price = Number(p.price) * Math.pow(10, expo);
+            const confidence = Number(p.conf) * Math.pow(10, expo);
+            points.push({
+              time: Number(p.publish_time),
+              price,
+              confidence,
+            });
+          }
+        }
+      } catch (err) {
+        errors++;
+        if (errors === 1) console.warn(`[PythHistory] Benchmarks request failed at ts=${ts}:`, err.message?.slice(0, 100));
+      }
+      ts += interval;
+      fetched++;
+    }
+
+    console.log(`[PythHistory] Got ${points.length} points (${fetched} requests, ${errors} errors)`);
+    points.sort((a, b) => a.time - b.time);
+    const result = { feedId: cleanId, from, to, interval, points };
+    if (points.length > 0) cache.set(cacheKey, result, 300);
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = { list, detail, ohlc, chart, global, trending, stream, fearGreed, exchanges, categories, gas, simplePrices, coinsByIds, memeBubbles, pythHistory };
