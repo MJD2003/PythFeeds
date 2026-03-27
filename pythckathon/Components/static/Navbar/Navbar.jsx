@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { usePathname } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
@@ -45,11 +45,9 @@ export default function Navbar() {
     );
   };
 
-  const toggleTheme = () => {
-    document.documentElement.classList.add("theme-transition");
+  const toggleTheme = useCallback(() => {
     setTheme(isDark ? "light" : "dark");
-    setTimeout(() => document.documentElement.classList.remove("theme-transition"), 500);
-  };
+  }, [isDark, setTheme]);
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 50);
@@ -74,7 +72,7 @@ export default function Navbar() {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [isDark]);
+  }, [toggleTheme]);
 
   // Close mobile menu on route change
   useEffect(() => {

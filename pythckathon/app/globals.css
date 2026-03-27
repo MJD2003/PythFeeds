@@ -373,16 +373,9 @@
 .price-flash-up { animation: price-flash-up 0.8s ease-out; }
 .price-flash-down { animation: price-flash-down 0.8s ease-out; }
 
-/* Smooth theme crossfade — toggled on during theme switch */
-.theme-transition,
-.theme-transition *,
-.theme-transition *::before,
-.theme-transition *::after {
-  transition: background-color var(--pf-duration-slow) var(--pf-ease),
-              color var(--pf-duration-normal) var(--pf-ease),
-              border-color var(--pf-duration-slow) var(--pf-ease),
-              box-shadow var(--pf-duration-slow) var(--pf-ease) !important;
-}
+/* Theme switch: avoid animating every descendant (was .theme-transition *) — that forced
+   thousands of transitions and made light/dark toggles feel slow and janky. Instant variable
+   swap + next-themes disableTransitionOnChange keeps the UI responsive. */
 
 /* Mode switch flash overlay */
 @keyframes mode-flash-in {
