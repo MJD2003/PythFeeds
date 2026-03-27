@@ -7,10 +7,11 @@ function getBaseUrl(): string {
   return "/api/cryptoserve";
 }
 
-async function apiFetch<T>(path: string): Promise<T> {
+async function apiFetch<T>(path: string, timeoutMs = 15000): Promise<T> {
   const base = getBaseUrl();
   const res = await fetch(`${base}${path}`, {
     next: { revalidate: 30 },
+    signal: AbortSignal.timeout(timeoutMs),
   });
   if (!res.ok) throw new Error(`API ${res.status}: ${res.statusText}`);
   return res.json();

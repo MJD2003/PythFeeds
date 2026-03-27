@@ -15,7 +15,6 @@ import ClientShell from "@/Components/providers/ClientShell";
 import AIChatbot from "@/Components/shared/AIChatbot";
 import DegenStrip from "@/Components/shared/DegenStrip";
 import DegenToolbar from "@/Components/shared/DegenToolbar";
-import KeyboardShortcuts from "@/Components/shared/KeyboardShortcuts";
 import TxTracker from "@/Components/shared/TxTracker";
 
 const geistSans = Geist({
@@ -112,7 +111,6 @@ export default function RootLayout({
               <MobileMenu />
               <MobileBottomNav />
               <AIChatbot />
-              <KeyboardShortcuts />
               <TxTracker />
               <Toaster richColors position="top-right" />
             </ClientShell>

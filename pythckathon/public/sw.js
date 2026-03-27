@@ -1,11 +1,7 @@
-const CACHE_NAME = "pythfeeds-v3";
-const IMG_CACHE = "pythfeeds-images-v1";
-const STATIC_ASSETS = ["/", "/favicon.ico", "/manifest.json", "/fonts/inter-latin.woff2"];
+const CACHE_NAME = "pythfeeds-v4";
+const IMG_CACHE = "pythfeeds-images-v2";
 
 self.addEventListener("install", (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(STATIC_ASSETS))
-  );
   self.skipWaiting();
 });
 
@@ -26,10 +22,9 @@ self.addEventListener("fetch", (event) => {
   const { request } = event;
   const url = new URL(request.url);
 
-  // Skip non-GET requests
   if (request.method !== "GET") return;
 
-  // Cache-first for fonts (local + Google)
+  // Cache-first for fonts
   if (url.pathname.startsWith("/fonts/") || url.hostname.includes("fonts.g")) {
     event.respondWith(
       caches.match(request).then((cached) => {
@@ -38,13 +33,13 @@ self.addEventListener("fetch", (event) => {
           const clone = res.clone();
           caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
           return res;
-        }).catch(() => new Response("", { status: 408 }));
+        }).catch(() => new Response("", { status: 204 }));
       })
     );
     return;
   }
 
-  // Cache-first for CoinGecko CDN images (coin logos)
+  // Cache-first for CoinGecko images
   if (url.hostname.includes("coin-images.coingecko.com") || url.hostname.includes("assets.coingecko.com")) {
     event.respondWith(
       caches.open(IMG_CACHE).then((cache) =>
@@ -53,50 +48,23 @@ self.addEventListener("fetch", (event) => {
           return fetch(request).then((res) => {
             if (res.ok) cache.put(request, res.clone());
             return res;
-          }).catch(() => new Response("", { status: 408 }));
+          }).catch(() => new Response("", { status: 204 }));
         })
       )
     );
     return;
   }
 
-  // Skip other external requests
+  // Skip external requests entirely -- let the browser handle them
   if (url.origin !== self.location.origin) return;
 
-  // Network-first for API calls and Next.js chunks
-  if (url.pathname.startsWith("/api") || url.pathname.startsWith("/_next")) {
-    event.respondWith(
-      fetch(request)
-        .then((res) => {
-          if (res.ok) {
-            const clone = res.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
-          }
-          return res;
-        })
-        .catch(() => caches.match(request))
-    );
+  // Never intercept _next build chunks or API calls -- let them go to network directly.
+  // Caching _next chunks causes stale hash mismatches after deploys that break the app.
+  if (url.pathname.startsWith("/_next") || url.pathname.startsWith("/api")) {
     return;
   }
 
-  // Stale-while-revalidate for coin detail pages
-  if (url.pathname.startsWith("/coins/")) {
-    event.respondWith(
-      caches.match(request).then((cached) => {
-        const fetchPromise = fetch(request).then((res) => {
-          if (res.ok) {
-            const clone = res.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
-          }
-          return res;
-        }).catch(() => cached);
-        return cached || fetchPromise;
-      })
-    );
-    return;
-  }
-
-  // Stale-while-revalidate for all other pages and static assets
+  // Stale-while-revalidate for HTML pages
   event.respondWith(
     caches.match(request).then((cached) => {
       const fetchPromise = fetch(request).then((res) => {
@@ -106,7 +74,6 @@ self.addEventListener("fetch", (event) => {
         }
         return res;
       }).catch(() => {
-        // Offline fallback: return cached or a simple offline message
         if (cached) return cached;
         if (request.headers.get("accept")?.includes("text/html")) {
           return new Response(
@@ -114,9 +81,8 @@ self.addEventListener("fetch", (event) => {
             { headers: { "Content-Type": "text/html" } }
           );
         }
-        return new Response("", { status: 408 });
+        return new Response("", { status: 204 });
       });
-
       return cached || fetchPromise;
     })
   );

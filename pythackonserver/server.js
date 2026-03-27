@@ -51,7 +51,7 @@ const generalLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 300,
   standardHeaders: true,
-  skip: (req) => req.path.includes("/stream/sse") || req.path === "/health",
+  skip: (req) => req.path.includes("/stream/sse") || req.path === "/api/health",
   handler: (req, res) => {
     const retryAfter = Math.ceil((req.rateLimit?.resetTime - Date.now()) / 1000) || 60;
     res.status(429).json({ error: "Too many requests", retryAfter, message: `Please wait ${retryAfter} seconds` });
