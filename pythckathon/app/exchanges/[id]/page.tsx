@@ -7,12 +7,7 @@ export const revalidate = 300;
 async function fetchExchangeDetail(id: string) {
   const base = process.env.BACKEND_URL || "http://localhost:4000";
   try {
-    const res = await fetch(`${base}/api/coins/exchanges/${id}`, { next: { revalidate: 300 } });
-    if (res.ok) return res.json();
-  } catch {}
-  // Fallback: fetch from CoinGecko directly
-  try {
-    const res = await fetch(`https://api.coingecko.com/api/v3/exchanges/${id}`, { next: { revalidate: 300 } });
+    const res = await fetch(`${base}/api/coins/exchanges/${encodeURIComponent(id)}`, { next: { revalidate: 300 } });
     if (res.ok) return res.json();
   } catch {}
   return null;

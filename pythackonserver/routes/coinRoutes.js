@@ -5,6 +5,7 @@ const ctrl = require("../controllers/coinController");
 router.get("/global", ctrl.global);
 router.get("/trending", ctrl.trending);
 router.get("/exchanges", ctrl.exchanges);
+router.get("/exchanges/:exchangeId", ctrl.exchangeById);
 router.get("/categories", ctrl.categories);
 router.get("/stream/sse", ctrl.stream);
 router.get("/fear-greed", ctrl.fearGreed);

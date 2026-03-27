@@ -239,6 +239,22 @@ async function exchanges(req, res, next) {
 }
 
 /**
+ * GET /api/coins/exchanges/:exchangeId
+ */
+async function exchangeById(req, res, next) {
+  try {
+    const id = req.params.exchangeId;
+    const data = await coingecko.getExchangeById(id);
+    if (!data || !data.name) {
+      return res.status(404).json({ error: "Exchange not found" });
+    }
+    res.json(data);
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
  * GET /api/coins/categories
  */
 async function categories(req, res, next) {
@@ -414,4 +430,4 @@ async function pythHistory(req, res, next) {
   }
 }
 
-module.exports = { list, detail, ohlc, chart, global, trending, stream, fearGreed, exchanges, categories, gas, simplePrices, coinsByIds, memeBubbles, pythHistory };
+module.exports = { list, detail, ohlc, chart, global, trending, stream, fearGreed, exchanges, exchangeById, categories, gas, simplePrices, coinsByIds, memeBubbles, pythHistory };

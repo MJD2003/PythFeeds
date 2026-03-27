@@ -1,11 +1,34 @@
 const axios = require("axios");
 const { cache, staleCache, CACHE_TTL } = require("../config/cache");
 
-const BASE_URL = process.env.COINGECKO_API_URL || "https://api.coingecko.com/api/v3";
+const CG_KEY = (process.env.COINGECKO_API_KEY || "").trim();
+const CG_FREE = "https://api.coingecko.com/api/v3";
+const CG_PRO = "https://pro-api.coingecko.com/api/v3";
 
-// Global throttle: serialize CoinGecko requests with a minimum gap (free tier = ~10/min)
+/** Pro keys use pro-api host + x-cg-pro-api-key; free/demo uses public api host. */
+const BASE_URL = process.env.COINGECKO_API_URL || (CG_KEY ? CG_PRO : CG_FREE);
+
+function cgHeaders() {
+  const h = { Accept: "application/json" };
+  if (CG_KEY) h["x-cg-pro-api-key"] = CG_KEY;
+  return h;
+}
+
+// Global throttle: free tier ~10/min; Pro allows much higher — tune with COINGECKO_MIN_GAP_MS
+const MIN_REQUEST_GAP =
+  Number(process.env.COINGECKO_MIN_GAP_MS) > 0
+    ? Number(process.env.COINGECKO_MIN_GAP_MS)
+    : CG_KEY
+      ? 120
+      : 2500;
+
+let _cgBootLogged = false;
+function logCgBootOnce() {
+  if (_cgBootLogged) return;
+  _cgBootLogged = true;
+  console.log(`[CoinGecko] ${CG_KEY ? "Pro API" : "public API"} · base ${BASE_URL} · min gap ${MIN_REQUEST_GAP}ms`);
+}
 let lastRequestTime = 0;
-const MIN_REQUEST_GAP = 2500;
 const requestQueue = [];
 let queueRunning = false;
 
@@ -39,6 +62,7 @@ function enqueue(fn) {
 const inFlight = new Map();
 
 async function fetchWithCache(key, url, ttl, params = {}) {
+  logCgBootOnce();
   // 1. Fresh cache hit
   const cached = cache.get(key);
   if (cached) return cached;
@@ -64,7 +88,7 @@ async function _fetchWithCacheInner(key, url, ttl, params) {
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
       const { data } = await enqueue(() =>
-        axios.get(url, { params, headers: { Accept: "application/json" }, timeout: 15000 })
+        axios.get(url, { params, headers: cgHeaders(), timeout: 15000 })
       );
       cache.set(key, data, ttl);
       staleCache.set(key, data);
@@ -93,6 +117,8 @@ async function _fetchWithCacheInner(key, url, ttl, params) {
   // 4. Return empty data instead of crashing with 500 -- pages handle empty arrays gracefully
   const status = lastErr?.response?.status;
   console.error(`[CoinGecko] All retries failed for ${key} (last status: ${status || "network error"}), returning empty data`);
+  // Single exchange detail: /exchanges/{id} — must be {} not []
+  if (url.includes("/exchanges/")) return {};
   return url.includes("/coins/markets") || url.includes("/exchanges") || url.includes("/coins/categories")
     ? []
     : url.includes("/search")
@@ -184,6 +210,18 @@ async function getExchanges(page = 1, perPage = 100) {
   );
 }
 
+/** Single exchange by id (e.g. binance) */
+async function getExchangeById(id) {
+  const clean = String(id || "").replace(/[^a-zA-Z0-9_-]/g, "");
+  if (!clean) return {};
+  return fetchWithCache(
+    `cg_exchange_${clean}`,
+    `${BASE_URL}/exchanges/${encodeURIComponent(clean)}`,
+    CACHE_TTL.EXCHANGES,
+    {}
+  );
+}
+
 /** Market chart (price history) */
 async function getMarketChart(id, days = 7, currency = "usd") {
   return fetchWithCache(
@@ -234,6 +272,7 @@ module.exports = {
   getTrending,
   getGlobal,
   getExchanges,
+  getExchangeById,
   getMarketChart,
   getCategories,
   getSimplePrices,
