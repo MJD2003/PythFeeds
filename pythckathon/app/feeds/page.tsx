@@ -244,7 +244,7 @@ export default function FeedsExplorer() {
   }, [feeds]);
 
   return (
-    <div className="min-h-screen" style={{ background: "var(--cmc-bg)" }}>
+    <div className="min-h-screen overflow-x-hidden" style={{ background: "var(--cmc-bg)" }}>
       <div className="mx-auto max-w-[1400px] px-4 py-6">
         {/* ── Header ── */}
         <div className="mb-6">
@@ -343,7 +343,7 @@ export default function FeedsExplorer() {
               </button>
             )}
           </div>
-          <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-hide">
+          <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-hide w-full min-w-0">
             {categories.map((cat) => (
               <button key={cat} onClick={() => setCategory(cat)}
                 className="shrink-0 rounded-full px-3 py-1 text-[11px] font-medium transition-all flex items-center gap-1"

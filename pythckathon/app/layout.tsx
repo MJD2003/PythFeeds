@@ -85,6 +85,7 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark" suppressHydrationWarning>
       <head>
+        <script dangerouslySetInnerHTML={{ __html: `try{if(localStorage.getItem('pythfeeds_mode')!=='standard'){document.documentElement.classList.add('degen')}}catch(e){}` }} />
         <link rel="manifest" href="/manifest.json" />
         <meta name="theme-color" content="#0A0B0D" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
