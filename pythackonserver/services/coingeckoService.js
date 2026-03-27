@@ -1,0 +1,201 @@
+const axios = require("axios");
+const { cache, staleCache, CACHE_TTL } = require("../config/cache");
+
+const BASE_URL = process.env.COINGECKO_API_URL || "https://api.coingecko.com/api/v3";
+
+// In-flight request deduplication — prevents concurrent identical requests
+const inFlight = new Map();
+
+async function fetchWithCache(key, url, ttl, params = {}) {
+  // 1. Fresh cache hit
+  const cached = cache.get(key);
+  if (cached) return cached;
+
+  // 1.5 Deduplicate: if an identical request is already in-flight, wait for it
+  if (inFlight.has(key)) {
+    return inFlight.get(key);
+  }
+
+  const promise = _fetchWithCacheInner(key, url, ttl, params);
+  inFlight.set(key, promise);
+  try {
+    const result = await promise;
+    return result;
+  } finally {
+    inFlight.delete(key);
+  }
+}
+
+async function _fetchWithCacheInner(key, url, ttl, params) {
+  // 2. Try network with retry + exponential backoff for rate limits
+  let lastErr;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const { data } = await axios.get(url, {
+        params,
+        headers: { Accept: "application/json" },
+        timeout: 15000,
+      });
+      cache.set(key, data, ttl);
+      staleCache.set(key, data);
+      return data;
+    } catch (err) {
+      lastErr = err;
+      const status = err.response?.status;
+      // Rate-limited (429) — back off longer
+      if (status === 429) {
+        const wait = Math.min(2000 * Math.pow(2, attempt), 10000);
+        console.warn(`[CoinGecko] 429 rate-limited on ${key}, waiting ${wait}ms (attempt ${attempt + 1})`);
+        await new Promise((r) => setTimeout(r, wait));
+      } else if (attempt < 2) {
+        await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
+      }
+    }
+  }
+
+  // 3. Fallback to stale cache if network fails
+  const stale = staleCache.get(key);
+  if (stale) {
+    console.warn(`[CoinGecko] Serving stale cache for ${key}`);
+    stale.__stale = true;
+    return stale;
+  }
+
+  throw new Error(`Failed to fetch ${url} and no cached data available`);
+}
+
+/** Top coins by market cap with sparkline + % changes */
+async function getCoinsMarkets(page = 1, perPage = 100, currency = "usd", category = "") {
+  const params = {
+    vs_currency: currency,
+    order: "market_cap_desc",
+    per_page: perPage,
+    page,
+    sparkline: true,
+    price_change_percentage: "1h,24h,7d",
+  };
+  if (category) params.category = category;
+  const cacheKey = `cg_markets_${currency}_${page}_${perPage}_${category || "all"}`;
+  return fetchWithCache(cacheKey, `${BASE_URL}/coins/markets`, CACHE_TTL.COIN_MARKETS, params);
+}
+
+/** Full coin detail by ID */
+async function getCoinDetail(id) {
+  return fetchWithCache(
+    `cg_detail_${id}`,
+    `${BASE_URL}/coins/${id}`,
+    CACHE_TTL.COIN_DETAIL,
+    {
+      localization: false,
+      tickers: true,
+      market_data: true,
+      community_data: true,
+      developer_data: false,
+      sparkline: true,
+    }
+  );
+}
+
+/** OHLC data for charts */
+async function getOHLC(id, days = 7, currency = "usd") {
+  return fetchWithCache(
+    `cg_ohlc_${id}_${days}_${currency}`,
+    `${BASE_URL}/coins/${id}/ohlc`,
+    CACHE_TTL.OHLC,
+    { vs_currency: currency, days }
+  );
+}
+
+/** Search coins, exchanges, categories */
+async function search(query) {
+  return fetchWithCache(
+    `cg_search_${query.toLowerCase()}`,
+    `${BASE_URL}/search`,
+    CACHE_TTL.SEARCH,
+    { query }
+  );
+}
+
+/** Trending coins */
+async function getTrending() {
+  return fetchWithCache(
+    "cg_trending",
+    `${BASE_URL}/search/trending`,
+    CACHE_TTL.TRENDING
+  );
+}
+
+/** Global market data */
+async function getGlobal() {
+  return fetchWithCache(
+    "cg_global",
+    `${BASE_URL}/global`,
+    CACHE_TTL.GLOBAL
+  );
+}
+
+/** Exchange list */
+async function getExchanges(page = 1, perPage = 100) {
+  return fetchWithCache(
+    `cg_exchanges_${page}_${perPage}`,
+    `${BASE_URL}/exchanges`,
+    CACHE_TTL.EXCHANGES,
+    { per_page: perPage, page }
+  );
+}
+
+/** Market chart (price history) */
+async function getMarketChart(id, days = 7, currency = "usd") {
+  return fetchWithCache(
+    `cg_chart_${id}_${days}_${currency}`,
+    `${BASE_URL}/coins/${id}/market_chart`,
+    CACHE_TTL.OHLC,
+    { vs_currency: currency, days }
+  );
+}
+
+/** Coin categories with market data */
+async function getCategories() {
+  return fetchWithCache(
+    "cg_categories",
+    `${BASE_URL}/coins/categories`,
+    CACHE_TTL.TRENDING,
+    {}
+  );
+}
+
+/** Simple prices by IDs (lightweight, no sparkline) */
+async function getSimplePrices(ids, currency = "usd") {
+  const sorted = ids.slice().sort().join(",");
+  return fetchWithCache(
+    `cg_simple_${sorted}_${currency}`,
+    `${BASE_URL}/simple/price`,
+    CACHE_TTL.COIN_MARKETS,
+    { ids: sorted, vs_currencies: currency }
+  );
+}
+
+/** Coins markets by specific IDs (for unlocks page: prices + images) */
+async function getCoinsByIds(ids, currency = "usd") {
+  const sorted = ids.slice().sort().join(",");
+  return fetchWithCache(
+    `cg_byids_${sorted}_${currency}`,
+    `${BASE_URL}/coins/markets`,
+    CACHE_TTL.COIN_MARKETS,
+    { vs_currency: currency, ids: sorted, sparkline: false, per_page: ids.length, page: 1 }
+  );
+}
+
+module.exports = {
+  getCoinsMarkets,
+  getCoinDetail,
+  getOHLC,
+  search,
+  getTrending,
+  getGlobal,
+  getExchanges,
+  getMarketChart,
+  getCategories,
+  getSimplePrices,
+  getCoinsByIds,
+};
