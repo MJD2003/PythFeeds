@@ -4,7 +4,6 @@ import { JetBrains_Mono, Syne } from "next/font/google";
 import "./globals.css";
 import { MenuProvider } from "@/Components/providers/MenuProvider";
 import WalletProvider from "@/Components/providers/WalletProvider";
-import { ThemeProvider } from "@/Components/providers/ThemeProvider";
 import Navbar from "@/Components/static/Navbar/Navbar";
 import Footer from "@/Components/static/Footer/Footer";
 import MobileMenu from "@/Components/layout/MobileMenu";
@@ -84,7 +83,7 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark" suppressHydrationWarning>
       <head>
-        <script dangerouslySetInnerHTML={{ __html: `try{if(localStorage.getItem('pythfeeds_mode')!=='standard'){document.documentElement.classList.add('degen')}}catch(e){}` }} />
+        <script dangerouslySetInnerHTML={{ __html: `try{var t=localStorage.getItem('theme');if(t==='light'){document.documentElement.classList.remove('dark')}else{document.documentElement.classList.add('dark')}if(localStorage.getItem('pythfeeds_mode')!=='standard'){document.documentElement.classList.add('degen')}}catch(e){}` }} />
         <link rel="manifest" href="/manifest.json" />
         <meta name="theme-color" content="#0A0B0D" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -93,12 +92,6 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} ${jetbrainsMono.variable} ${syne.variable} font-sans antialiased`}
       >
-        <ThemeProvider
-          attribute="class"
-          defaultTheme="dark"
-          enableSystem={false}
-          disableTransitionOnChange
-        >
         <WalletProvider>
           <CurrencyProvider>
           <MenuProvider>
@@ -117,7 +110,6 @@ export default function RootLayout({
           </MenuProvider>
           </CurrencyProvider>
         </WalletProvider>
-        </ThemeProvider>
       </body>
     </html>
   );

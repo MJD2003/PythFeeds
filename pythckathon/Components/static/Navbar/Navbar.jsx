@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
 import { Menu, Search, Sun, Moon, Star, PieChart, Bell, ArrowLeftRight, Grid3X3, Flame, X, Repeat2, Radio } from "lucide-react";
-import { useTheme } from "next-themes";
+import { useIsDarkMode, setLightDarkMode } from "@/lib/theme-client";
 import { menuItems } from "@/lib/data/menu-items";
 import { useMenu } from "@/Components/providers/MenuProvider";
 import Submenu from "./Submenu";
@@ -21,17 +21,13 @@ export default function Navbar() {
   const { toggleMenu } = useMenu();
   const mode = useMode();
   const isDegen = mode === "degen";
-  const { theme, setTheme, resolvedTheme } = useTheme();
-  const [mounted, setMounted] = useState(false);
+  const isDark = useIsDarkMode();
   const data = Object.entries(menuItems);
   const innerRef = useRef(null);
   const pathname = usePathname();
   const [scrolled, setScrolled] = useState(false);
   const [trendingOpen, setTrendingOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-
-  useEffect(() => setMounted(true), []);
-  const isDark = mounted ? resolvedTheme === "dark" : true;
 
   // Check if a menu section contains the current route
   const isSectionActive = (section) => {
@@ -46,8 +42,8 @@ export default function Navbar() {
   };
 
   const toggleTheme = useCallback(() => {
-    setTheme(isDark ? "light" : "dark");
-  }, [isDark, setTheme]);
+    setLightDarkMode(isDark ? "light" : "dark");
+  }, [isDark]);
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 50);

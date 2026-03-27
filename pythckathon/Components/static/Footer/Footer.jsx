@@ -1,17 +1,13 @@
 "use client";
 
-import { useState, useEffect } from "react";
 import Image from "next/image";
-import { useTheme } from "next-themes";
 import { footerItems } from "@/lib/data/footer-items";
 import GasTracker from "@/Components/shared/GasTracker";
+import { useIsDarkMode } from "@/lib/theme-client";
 
 export default function Footer() {
   const sections = Object.entries(footerItems);
-  const { resolvedTheme } = useTheme();
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
-  const isDark = mounted ? resolvedTheme === "dark" : true;
+  const isDark = useIsDarkMode();
 
   return (
     <footer className="relative" style={{ borderTop: "1px solid var(--cmc-border)" }}>

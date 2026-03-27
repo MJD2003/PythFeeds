@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createChart, ColorType, AreaData, Time, AreaSeries, LineSeries } from "lightweight-charts";
+import { useIsDarkMode } from "@/lib/theme-client";
 
 interface AreaChartProps {
   symbol: string;
@@ -81,18 +82,10 @@ export default function AreaChart({ symbol, coinId, interval = "1D", currentPric
   const chartId = coinId || symbol;
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<ReturnType<typeof createChart> | null>(null);
-  const [isDark, setIsDark] = useState(true);
+  const isDark = useIsDarkMode();
   const [noData, setNoData] = useState(false);
   const [legend, setLegend] = useState<{ primary: string; compare: string } | null>(null);
   const isComparing = !!compareId;
-
-  useEffect(() => {
-    const check = () => setIsDark(document.documentElement.classList.contains("dark"));
-    check();
-    const obs = new MutationObserver(check);
-    obs.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
-    return () => obs.disconnect();
-  }, []);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -280,7 +273,39 @@ export default function AreaChart({ symbol, coinId, interval = "1D", currentPric
         chartRef.current = null;
       }
     };
-  }, [symbol, coinId, chartId, interval, isDark, currentPrice, isComparing, compareId, compareSymbol, dataMode]);
+  }, [symbol, coinId, chartId, interval, currentPrice, isComparing, compareId, compareSymbol, dataMode]);
+
+  // Theme toggle: update colors only — avoid destroying the chart + refetching data (was blocking UI).
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart) return;
+    const computed = getComputedStyle(document.documentElement);
+    const bgColor = computed.getPropertyValue("--cmc-neutral-1").trim() || (isDark ? "#17171a" : "#ffffff");
+    const textColor = isDark ? "rgba(255,255,255,0.5)" : "rgba(0,0,0,0.5)";
+    const gridColor = isDark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.06)";
+    chart.applyOptions({
+      layout: {
+        background: { type: ColorType.Solid, color: bgColor },
+        textColor,
+      },
+      grid: {
+        vertLines: { color: gridColor },
+        horzLines: { color: gridColor },
+      },
+      rightPriceScale: { borderColor: gridColor },
+      timeScale: { borderColor: gridColor },
+      crosshair: {
+        horzLine: {
+          color: isDark ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.15)",
+          labelBackgroundColor: isDark ? "#333" : "#555",
+        },
+        vertLine: {
+          color: isDark ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.15)",
+          labelBackgroundColor: isDark ? "#333" : "#555",
+        },
+      },
+    });
+  }, [isDark]);
 
   return (
     <div className="relative w-full rounded-lg overflow-hidden">
