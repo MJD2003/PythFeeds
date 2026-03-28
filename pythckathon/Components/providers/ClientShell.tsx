@@ -1,8 +1,10 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import { useLayoutEffect } from "react";
 import { usePathname } from "next/navigation";
 import { AnimatePresence, motion } from "motion/react";
+import { applyModeClassToHtml } from "@/lib/mode-store";
 
 const ServiceWorkerRegistration = dynamic(() => import("@/Components/shared/ServiceWorkerRegistration"), { ssr: false });
 const GasTrackerBanner = dynamic(() => import("@/Components/shared/GasTracker").then(m => m.GasTrackerBanner), { ssr: false });
@@ -12,6 +14,16 @@ const PythTickerBar = dynamic(() => import("@/Components/shared/PythTickerBar"),
 
 export default function ClientShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+
+  // Next hydration sets <html className="dark"> only and drops `degen` from the blocking script — re-apply before paint.
+  useLayoutEffect(() => {
+    applyModeClassToHtml();
+    const onPageShow = (e: PageTransitionEvent) => {
+      if (e.persisted) applyModeClassToHtml();
+    };
+    window.addEventListener("pageshow", onPageShow);
+    return () => window.removeEventListener("pageshow", onPageShow);
+  }, []);
 
   return (
     <>

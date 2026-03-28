@@ -9,6 +9,26 @@ import type { CoinData } from "@/lib/types";
 import { formatPrice, formatLargeValue, startsWithHttp } from "@/lib/format";
 import { useCurrency } from "@/lib/currency-context";
 import type { HomeFilters } from "./HomeContent";
+import { fetchMarketMovers, fetchNewListings, type CoinMarketItem } from "@/lib/api/backend";
+
+/** CoinGecko sometimes returns `price_change_percentage_24h` without `_in_currency`. */
+function normalizeTabCoin(c: CoinMarketItem | CoinData): CoinData {
+  const r = c as CoinData & {
+    price_change_percentage_24h?: number;
+    price_change_percentage_7d?: number;
+    price_change_percentage_1h?: number;
+  };
+  return {
+    ...r,
+    price_change_percentage_1h_in_currency:
+      r.price_change_percentage_1h_in_currency ?? r.price_change_percentage_1h ?? 0,
+    price_change_percentage_24h_in_currency:
+      r.price_change_percentage_24h_in_currency ?? r.price_change_percentage_24h ?? 0,
+    price_change_percentage_7d_in_currency:
+      r.price_change_percentage_7d_in_currency ?? r.price_change_percentage_7d ?? 0,
+    sparkline_in_7d: r.sparkline_in_7d ?? { price: [] },
+  };
+}
 
 interface HomeTableProps {
   coins: CoinData[];
@@ -66,9 +86,38 @@ export default function HomeTable({ coins, trendingIds = new Set(), filters, loa
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [visibleCount, setVisibleCount] = useState(BATCH);
   const [activeTab, setActiveTab] = useState<TabFilter>("top");
+  const [remoteTabCoins, setRemoteTabCoins] = useState<CoinData[] | null>(null);
+  const [remoteTabLoading, setRemoteTabLoading] = useState(false);
 
   // Live prices from Pyth (passed from parent)
   const livePrices = pythPrices || {};
+
+  // Gainers / Losers / New — fetch real lists from API (not just resorting the top-100 row)
+  useEffect(() => {
+    if (activeTab === "top" || activeTab === "trending") {
+      setRemoteTabCoins(null);
+      setRemoteTabLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setRemoteTabLoading(true);
+    (async () => {
+      try {
+        let raw: CoinMarketItem[];
+        if (activeTab === "gainers") raw = await fetchMarketMovers("gainers", 50);
+        else if (activeTab === "losers") raw = await fetchMarketMovers("losers", 50);
+        else raw = await fetchNewListings(60);
+        if (!cancelled) setRemoteTabCoins(raw.map(normalizeTabCoin));
+      } catch {
+        if (!cancelled) setRemoteTabCoins(null);
+      } finally {
+        if (!cancelled) setRemoteTabLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab]);
 
   // Persist watchlist
   useEffect(() => {
@@ -100,6 +149,11 @@ export default function HomeTable({ coins, trendingIds = new Set(), filters, loa
     }
   }, [filters?.sort]);
 
+  const pct24 = (c: CoinData) =>
+    c.price_change_percentage_24h_in_currency ??
+    (c as CoinData & { price_change_percentage_24h?: number }).price_change_percentage_24h ??
+    0;
+
   // Filter coins based on active tab + parent filters (mcap, volume)
   const tabFiltered = useMemo(() => {
     let result: CoinData[];
@@ -108,13 +162,21 @@ export default function HomeTable({ coins, trendingIds = new Set(), filters, loa
         result = trendingIds.size > 0 ? coins.filter(c => trendingIds.has(c.id)) : coins.slice(0, 20);
         break;
       case "gainers":
-        result = [...coins].sort((a, b) => (b.price_change_percentage_24h_in_currency ?? 0) - (a.price_change_percentage_24h_in_currency ?? 0)).slice(0, 50);
+        result = remoteTabCoins?.length
+          ? remoteTabCoins
+          : [...coins].sort((a, b) => pct24(b) - pct24(a)).slice(0, 50);
         break;
       case "losers":
-        result = [...coins].sort((a, b) => (a.price_change_percentage_24h_in_currency ?? 0) - (b.price_change_percentage_24h_in_currency ?? 0)).slice(0, 50);
+        result = remoteTabCoins?.length
+          ? remoteTabCoins
+          : [...coins].sort((a, b) => pct24(a) - pct24(b)).slice(0, 50);
         break;
       case "new":
-        result = [...coins].sort((a, b) => (b.market_cap_rank ?? 999) - (a.market_cap_rank ?? 999)).slice(0, 50);
+        result = remoteTabCoins?.length
+          ? remoteTabCoins
+          : [...coins]
+              .sort((a, b) => (a.market_cap || 0) - (b.market_cap || 0))
+              .slice(0, 50);
         break;
       default:
         result = coins;
@@ -126,7 +188,7 @@ export default function HomeTable({ coins, trendingIds = new Set(), filters, loa
       if (filters.minVol > 0) result = result.filter(c => c.total_volume >= filters.minVol);
     }
     return result;
-  }, [coins, activeTab, trendingIds, filters]);
+  }, [coins, activeTab, trendingIds, filters, remoteTabCoins]);
   const [loadingMore, setLoadingMore] = useState(false);
   const sentinelRef = useRef<HTMLDivElement>(null);
 
@@ -202,6 +264,10 @@ export default function HomeTable({ coins, trendingIds = new Set(), filters, loa
     setVisibleCount(BATCH);
   }, [sortKey, sortDir, activeTab]);
 
+  const needsRemoteTab =
+    activeTab === "gainers" || activeTab === "losers" || activeTab === "new";
+  const tableLoading = Boolean(parentLoading || (needsRemoteTab && remoteTabLoading));
+
   const headers: { key: SortKey | "star" | "7days"; label: string; width: string; align: string; sortable: boolean; hideClass?: string }[] = [
     { key: "star", label: "", width: "w-[28px]", align: "text-center", sortable: false },
     { key: "rank", label: "#", width: "w-[40px]", align: "text-left", sortable: true },
@@ -259,7 +325,7 @@ export default function HomeTable({ coins, trendingIds = new Set(), filters, loa
             </tr>
           </thead>
           <tbody>
-            {parentLoading ? (
+            {tableLoading ? (
               // Skeleton loader rows
               Array.from({ length: 10 }).map((_, i) => (
                 <tr key={`skel-${i}`} style={{ borderBottom: "1px solid var(--cmc-border)" }}>
@@ -295,6 +361,9 @@ export default function HomeTable({ coins, trendingIds = new Set(), filters, loa
                 >
                   <td className="px-2 sm:px-2.5 py-3.5 text-center">
                     <button
+                      type="button"
+                      title={isStarred ? "Remove from watchlist" : "Add to watchlist"}
+                      aria-label={isStarred ? "Remove from watchlist" : "Add to watchlist"}
                       onClick={() => toggleStar(coin.id)}
                       style={{ color: isStarred ? "var(--cmc-star)" : "var(--cmc-neutral-3)" }}
                     >

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useSyncExternalStore } from "react";
+import { useSyncExternalStore } from "react";
 
 export type AppMode = "standard" | "degen";
 
@@ -9,15 +9,30 @@ const EVENT_NAME = "modechange";
 
 let currentMode: AppMode = "degen";
 
-// Initialize from localStorage (SSR-safe)
-if (typeof window !== "undefined") {
-  const stored = localStorage.getItem(STORAGE_KEY);
-  if (stored === "standard") {
-    currentMode = "standard";
+/** Keep `<html>` class in sync with `currentMode` (React hydration resets `className` to `dark` only). */
+export function applyModeClassToHtml() {
+  if (typeof window === "undefined") return;
+  const root = document.documentElement;
+  if (currentMode === "degen") {
+    root.classList.add("degen");
   } else {
-    currentMode = "degen";
-    document.documentElement.classList.add("degen");
+    root.classList.remove("degen");
   }
+}
+
+// Default platform mode is degen; only exact "standard" opts out. Persist degen for first visits / bad values.
+if (typeof window !== "undefined") {
+  let stored = localStorage.getItem(STORAGE_KEY);
+  if (stored !== "standard" && stored !== "degen") {
+    stored = "degen";
+    try {
+      localStorage.setItem(STORAGE_KEY, "degen");
+    } catch {
+      /* private mode / quota */
+    }
+  }
+  currentMode = stored === "standard" ? "standard" : "degen";
+  applyModeClassToHtml();
 }
 
 const listeners = new Set<() => void>();
@@ -37,13 +52,12 @@ export function setMode(mode: AppMode) {
   if (mode === currentMode) return;
   currentMode = mode;
   if (typeof window !== "undefined") {
-    localStorage.setItem(STORAGE_KEY, mode);
-    // Toggle degen class on <html> for CSS variable overrides
-    if (mode === "degen") {
-      document.documentElement.classList.add("degen");
-    } else {
-      document.documentElement.classList.remove("degen");
+    try {
+      localStorage.setItem(STORAGE_KEY, mode);
+    } catch {
+      /* ignore */
     }
+    applyModeClassToHtml();
   }
   emitChange();
 }

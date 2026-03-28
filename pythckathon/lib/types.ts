@@ -14,6 +14,8 @@ export interface CoinData {
   sparkline_in_7d: {
     price: number[];
   };
+  /** ISO timestamp from CoinGecko (e.g. homepage “New” fallback sort) */
+  last_updated?: string;
 }
 
 export interface CoinLinks {

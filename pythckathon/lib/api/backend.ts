@@ -220,6 +220,28 @@ export async function fetchCoins(page = 1, perPage = 100, category = "") {
   return apiFetch<CoinMarketItem[]>(`/coins?${params}`);
 }
 
+/** Homepage “Gainers” / “Losers” — real 24h leaders among top ~250 by mcap */
+export async function fetchMarketMovers(type: "gainers" | "losers", limit = 50) {
+  const base = getBaseUrl();
+  const res = await fetch(`${base}/coins/movers?type=${type}&limit=${limit}`, {
+    cache: "no-store",
+    signal: AbortSignal.timeout(15000),
+  });
+  if (!res.ok) throw new Error(`API ${res.status}: ${res.statusText}`);
+  return res.json() as Promise<CoinMarketItem[]>;
+}
+
+/** Homepage “New” — Pro /coins/list/new when available; else server uses small-cap markets (distinct from Top) */
+export async function fetchNewListings(limit = 60) {
+  const base = getBaseUrl();
+  const res = await fetch(`${base}/coins/new-listings?limit=${limit}`, {
+    cache: "no-store",
+    signal: AbortSignal.timeout(15000),
+  });
+  if (!res.ok) throw new Error(`API ${res.status}: ${res.statusText}`);
+  return res.json() as Promise<CoinMarketItem[]>;
+}
+
 export async function fetchCoinDetail(id: string) {
   return apiFetch<CoinDetailResponse>(`/coins/${id}`);
 }
