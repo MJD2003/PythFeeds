@@ -36,7 +36,7 @@ let cachedModelId = null;
 
 /** Default works with Google AI Studio keys; override with GEMINI_MODEL if needed. */
 function getGeminiModelId() {
-  return (process.env.GEMINI_MODEL || "gemini-2.0-flash").trim();
+  return (process.env.GEMINI_MODEL || "gemini-2.5-flash").trim();
 }
 
 function getModel() {

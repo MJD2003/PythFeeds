@@ -36,7 +36,7 @@ const startTime = Date.now();
 if (!process.env.GEMINI_API_KEY?.trim()) {
   console.warn("[AI] GEMINI_API_KEY is missing — /api/ai/* routes will fail until set in pythackonserver/.env");
 } else {
-  console.log(`[AI] Gemini OK (GEMINI_MODEL=${process.env.GEMINI_MODEL || "gemini-2.0-flash"})`);
+  console.log(`[AI] Gemini OK (GEMINI_MODEL=${process.env.GEMINI_MODEL || "gemini-2.5-flash"})`);
 }
 
 app.set("trust proxy", 1);
