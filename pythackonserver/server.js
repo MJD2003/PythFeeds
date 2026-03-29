@@ -1,4 +1,5 @@
-require("dotenv").config();
+const path = require("path");
+require("dotenv").config({ path: path.join(__dirname, ".env") });
 const express = require("express");
 const cors = require("cors");
 const rateLimit = require("express-rate-limit");
@@ -107,7 +108,10 @@ app.use(errorHandler);
 app.listen(PORT, () => {
   console.log(`[Server] Running on http://localhost:${PORT}`);
   console.log(`[Server] Pyth Hermes: ${process.env.PYTH_HERMES_URL}`);
-  console.log(`[Server] CoinGecko: ${process.env.COINGECKO_API_URL}`);
+  const cgKey = (process.env.COINGECKO_API_KEY || "").trim();
+  console.log(
+    `[Server] CoinGecko: ${process.env.COINGECKO_API_URL || "(default host)"} · key ${cgKey ? `loaded (${cgKey.length} chars)` : "MISSING — Pro calls will 401"}`
+  );
 
   // Initialize MySQL (non-blocking, server works without it)
   initDatabase().then((ok) => {

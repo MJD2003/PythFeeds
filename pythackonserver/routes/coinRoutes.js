@@ -12,6 +12,8 @@ router.get("/fear-greed", ctrl.fearGreed);
 router.get("/gas", ctrl.gas);
 router.get("/simple-prices", ctrl.simplePrices);
 router.get("/by-ids", ctrl.coinsByIds);
+router.get("/new-listings", ctrl.newListings);
+router.get("/movers", ctrl.marketMovers);
 router.get("/meme-bubbles", ctrl.memeBubbles);
 router.get("/", ctrl.list);
 router.get("/:id/pyth-history", ctrl.pythHistory);

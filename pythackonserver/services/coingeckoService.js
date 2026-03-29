@@ -1,32 +1,53 @@
 const axios = require("axios");
 const { cache, staleCache, CACHE_TTL } = require("../config/cache");
 
-const CG_KEY = (process.env.COINGECKO_API_KEY || "").trim();
 const CG_FREE = "https://api.coingecko.com/api/v3";
 const CG_PRO = "https://pro-api.coingecko.com/api/v3";
 
-/** Pro keys use pro-api host + x-cg-pro-api-key; free/demo uses public api host. */
-const BASE_URL = process.env.COINGECKO_API_URL || (CG_KEY ? CG_PRO : CG_FREE);
+/** Read at use-time so the key is correct after dotenv loads (avoid frozen empty module state). */
+function getCgKey() {
+  return (process.env.COINGECKO_API_KEY || "").trim();
+}
+
+/** Pro host + `x-cg-pro-api-key`, or public API when no key */
+function getBaseUrl() {
+  const override = (process.env.COINGECKO_API_URL || "").trim();
+  if (override) return override.replace(/\/$/, "");
+  return getCgKey() ? CG_PRO : CG_FREE;
+}
 
 function cgHeaders() {
   const h = { Accept: "application/json" };
-  if (CG_KEY) h["x-cg-pro-api-key"] = CG_KEY;
+  const key = getCgKey();
+  if (key) h["x-cg-pro-api-key"] = key;
   return h;
 }
 
 // Global throttle: free tier ~10/min; Pro allows much higher — tune with COINGECKO_MIN_GAP_MS
-const MIN_REQUEST_GAP =
-  Number(process.env.COINGECKO_MIN_GAP_MS) > 0
-    ? Number(process.env.COINGECKO_MIN_GAP_MS)
-    : CG_KEY
-      ? 120
-      : 2500;
+function getMinRequestGap() {
+  const n = Number(process.env.COINGECKO_MIN_GAP_MS);
+  if (n > 0) return n;
+  return getCgKey() ? 120 : 2500;
+}
 
 let _cgBootLogged = false;
 function logCgBootOnce() {
   if (_cgBootLogged) return;
   _cgBootLogged = true;
-  console.log(`[CoinGecko] ${CG_KEY ? "Pro API" : "public API"} · base ${BASE_URL} · min gap ${MIN_REQUEST_GAP}ms`);
+  const key = getCgKey();
+  const base = getBaseUrl();
+  const gap = getMinRequestGap();
+  console.log(`[CoinGecko] ${key ? "Pro API" : "public API"} · base ${base} · min gap ${gap}ms`);
+  if (!key) {
+    console.log(
+      "[CoinGecko] /coins/list/new is Pro-only — skipping that call; “New” tab uses small-cap markets fallback (set COINGECKO_API_KEY for true new listings)"
+    );
+  }
+  if (!key && base.includes("pro-api.coingecko.com")) {
+    console.warn(
+      "[CoinGecko] Pro API URL is set but COINGECKO_API_KEY is empty — every request returns 401. Use server.js from pythackonserver/ or dotenv path fixed to load .env"
+    );
+  }
 }
 let lastRequestTime = 0;
 const requestQueue = [];
@@ -37,9 +58,10 @@ async function runQueue() {
   queueRunning = true;
   while (requestQueue.length > 0) {
     const { resolve, reject, fn } = requestQueue.shift();
+    const gap = getMinRequestGap();
     const elapsed = Date.now() - lastRequestTime;
-    if (elapsed < MIN_REQUEST_GAP) {
-      await new Promise(r => setTimeout(r, MIN_REQUEST_GAP - elapsed));
+    if (elapsed < gap) {
+      await new Promise(r => setTimeout(r, gap - elapsed));
     }
     try {
       lastRequestTime = Date.now();
@@ -119,6 +141,8 @@ async function _fetchWithCacheInner(key, url, ttl, params) {
   console.error(`[CoinGecko] All retries failed for ${key} (last status: ${status || "network error"}), returning empty data`);
   // Single exchange detail: /exchanges/{id} — must be {} not []
   if (url.includes("/exchanges/")) return {};
+  // Pro-only new listings — [] so callers can fall back (never cache as {})
+  if (url.includes("/coins/list/new")) return [];
   return url.includes("/coins/markets") || url.includes("/exchanges") || url.includes("/coins/categories")
     ? []
     : url.includes("/search")
@@ -130,26 +154,27 @@ async function _fetchWithCacheInner(key, url, ttl, params) {
     : {};
 }
 
-/** Top coins by market cap with sparkline + % changes */
-async function getCoinsMarkets(page = 1, perPage = 100, currency = "usd", category = "") {
+/** Top coins by market cap with sparkline + % changes (optional `order`, e.g. market_cap_asc for small-cap / “new” fallback) */
+async function getCoinsMarkets(page = 1, perPage = 100, currency = "usd", category = "", options = {}) {
+  const order = options.order || "market_cap_desc";
   const params = {
     vs_currency: currency,
-    order: "market_cap_desc",
+    order,
     per_page: perPage,
     page,
     sparkline: true,
     price_change_percentage: "1h,24h,7d",
   };
   if (category) params.category = category;
-  const cacheKey = `cg_markets_${currency}_${page}_${perPage}_${category || "all"}`;
-  return fetchWithCache(cacheKey, `${BASE_URL}/coins/markets`, CACHE_TTL.COIN_MARKETS, params);
+  const cacheKey = `cg_markets_${currency}_${page}_${perPage}_${category || "all"}_${order}`;
+  return fetchWithCache(cacheKey, `${getBaseUrl()}/coins/markets`, CACHE_TTL.COIN_MARKETS, params);
 }
 
 /** Full coin detail by ID */
 async function getCoinDetail(id) {
   return fetchWithCache(
     `cg_detail_${id}`,
-    `${BASE_URL}/coins/${id}`,
+    `${getBaseUrl()}/coins/${id}`,
     CACHE_TTL.COIN_DETAIL,
     {
       localization: false,
@@ -166,7 +191,7 @@ async function getCoinDetail(id) {
 async function getOHLC(id, days = 7, currency = "usd") {
   return fetchWithCache(
     `cg_ohlc_${id}_${days}_${currency}`,
-    `${BASE_URL}/coins/${id}/ohlc`,
+    `${getBaseUrl()}/coins/${id}/ohlc`,
     CACHE_TTL.OHLC,
     { vs_currency: currency, days }
   );
@@ -176,7 +201,7 @@ async function getOHLC(id, days = 7, currency = "usd") {
 async function search(query) {
   return fetchWithCache(
     `cg_search_${query.toLowerCase()}`,
-    `${BASE_URL}/search`,
+    `${getBaseUrl()}/search`,
     CACHE_TTL.SEARCH,
     { query }
   );
@@ -186,7 +211,7 @@ async function search(query) {
 async function getTrending() {
   return fetchWithCache(
     "cg_trending",
-    `${BASE_URL}/search/trending`,
+    `${getBaseUrl()}/search/trending`,
     CACHE_TTL.TRENDING
   );
 }
@@ -195,7 +220,7 @@ async function getTrending() {
 async function getGlobal() {
   return fetchWithCache(
     "cg_global",
-    `${BASE_URL}/global`,
+    `${getBaseUrl()}/global`,
     CACHE_TTL.GLOBAL
   );
 }
@@ -204,7 +229,7 @@ async function getGlobal() {
 async function getExchanges(page = 1, perPage = 100) {
   return fetchWithCache(
     `cg_exchanges_${page}_${perPage}`,
-    `${BASE_URL}/exchanges`,
+    `${getBaseUrl()}/exchanges`,
     CACHE_TTL.EXCHANGES,
     { per_page: perPage, page }
   );
@@ -216,7 +241,7 @@ async function getExchangeById(id) {
   if (!clean) return {};
   return fetchWithCache(
     `cg_exchange_${clean}`,
-    `${BASE_URL}/exchanges/${encodeURIComponent(clean)}`,
+    `${getBaseUrl()}/exchanges/${encodeURIComponent(clean)}`,
     CACHE_TTL.EXCHANGES,
     {}
   );
@@ -226,7 +251,7 @@ async function getExchangeById(id) {
 async function getMarketChart(id, days = 7, currency = "usd") {
   return fetchWithCache(
     `cg_chart_${id}_${days}_${currency}`,
-    `${BASE_URL}/coins/${id}/market_chart`,
+    `${getBaseUrl()}/coins/${id}/market_chart`,
     CACHE_TTL.OHLC,
     { vs_currency: currency, days }
   );
@@ -236,7 +261,7 @@ async function getMarketChart(id, days = 7, currency = "usd") {
 async function getCategories() {
   return fetchWithCache(
     "cg_categories",
-    `${BASE_URL}/coins/categories`,
+    `${getBaseUrl()}/coins/categories`,
     CACHE_TTL.TRENDING,
     {}
   );
@@ -247,21 +272,72 @@ async function getSimplePrices(ids, currency = "usd") {
   const sorted = ids.slice().sort().join(",");
   return fetchWithCache(
     `cg_simple_${sorted}_${currency}`,
-    `${BASE_URL}/simple/price`,
+    `${getBaseUrl()}/simple/price`,
     CACHE_TTL.COIN_MARKETS,
     { ids: sorted, vs_currencies: currency }
   );
 }
 
 /** Coins markets by specific IDs (for unlocks page: prices + images) */
-async function getCoinsByIds(ids, currency = "usd") {
+async function getCoinsByIds(ids, currency = "usd", options = {}) {
+  const { sparkline = false } = options;
+  if (!ids.length) return [];
   const sorted = ids.slice().sort().join(",");
+  const n = Math.min(ids.length, 250);
+  const params = {
+    vs_currency: currency,
+    ids: sorted,
+    sparkline,
+    per_page: n,
+    page: 1,
+  };
+  if (sparkline) params.price_change_percentage = "1h,24h,7d";
   return fetchWithCache(
-    `cg_byids_${sorted}_${currency}`,
-    `${BASE_URL}/coins/markets`,
+    `cg_byids_${sorted}_${currency}_sp${sparkline ? 1 : 0}`,
+    `${getBaseUrl()}/coins/markets`,
     CACHE_TTL.COIN_MARKETS,
-    { vs_currency: currency, ids: sorted, sparkline: false, per_page: ids.length, page: 1 }
+    params
   );
+}
+
+/**
+ * Pro-only: latest ~200 coins added on CoinGecko (see /coins/list/new).
+ * Without COINGECKO_API_KEY we skip the HTTP call (free/public tier gets 401).
+ */
+async function getCoinsListNew() {
+  if (!getCgKey()) return [];
+  return fetchWithCache("cg_coins_list_new_v1", `${getBaseUrl()}/coins/list/new`, 120, {});
+}
+
+/**
+ * Recently activated coins with full market rows, ordered by activated_at (newest first).
+ */
+async function getNewListingsMarkets(limit = 60) {
+  let list;
+  try {
+    list = await getCoinsListNew();
+  } catch (e) {
+    console.warn("[CoinGecko] coins/list/new unavailable:", e.message);
+    return null;
+  }
+  if (!Array.isArray(list) || list.length === 0) return null;
+  const ordered = [...list].sort((a, b) => (b.activated_at || 0) - (a.activated_at || 0));
+  const ids = ordered.slice(0, Math.min(limit, 120)).map((r) => r.id).filter(Boolean);
+  if (!ids.length) return null;
+  const markets = await getCoinsByIds(ids, "usd", { sparkline: true });
+  const byId = new Map(markets.map((m) => [m.id, m]));
+  return ids.map((id) => byId.get(id)).filter(Boolean);
+}
+
+/** Top gainers/losers by 24h % among the top ~250 coins by market cap (widest sample CG allows per page). */
+async function getMarketMovers(type = "gainers", limit = 50) {
+  const coins = await getCoinsMarkets(1, 250, "usd", "");
+  const pct = (c) =>
+    c.price_change_percentage_24h_in_currency ?? c.price_change_percentage_24h ?? 0;
+  const sorted = [...coins].sort((a, b) =>
+    type === "losers" ? pct(a) - pct(b) : pct(b) - pct(a)
+  );
+  return sorted.slice(0, limit);
 }
 
 module.exports = {
@@ -277,4 +353,6 @@ module.exports = {
   getCategories,
   getSimplePrices,
   getCoinsByIds,
+  getNewListingsMarkets,
+  getMarketMovers,
 };

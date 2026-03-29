@@ -30,10 +30,13 @@ const nextConfig: NextConfig = {
     optimizePackageImports: ["lucide-react", "motion/react", "react-sparklines"],
   },
   async rewrites() {
+    // Must match where Express runs in production (same VPS: 127.0.0.1:4000, or split: https://api.yourdomain.com).
+    // Hardcoded localhost breaks hosted Next when the API is on another host or not reachable from the Next process.
+    const backend = (process.env.BACKEND_URL || "http://127.0.0.1:4000").replace(/\/$/, "");
     return [
       {
         source: "/api/cryptoserve/:path*",
-        destination: "http://localhost:4000/api/:path*",
+        destination: `${backend}/api/:path*`,
       },
     ];
   },

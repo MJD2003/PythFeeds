@@ -3,6 +3,27 @@ const { getPythPrices, CRYPTO_FEEDS } = require("../services/pythService");
 const axios = require("axios");
 const { cache, CACHE_TTL } = require("../config/cache");
 
+async function enrichWithPyth(coins) {
+  if (!Array.isArray(coins) || coins.length === 0) return [];
+  const pythSymbols = Object.keys(CRYPTO_FEEDS);
+  const pythPrices = await getPythPrices(pythSymbols);
+  return coins.map((coin) => {
+    const sym = coin.symbol.toUpperCase();
+    const pyth = pythPrices[sym];
+    if (pyth) {
+      return {
+        ...coin,
+        current_price: pyth.price,
+        pyth_price: pyth.price,
+        pyth_confidence: pyth.confidence,
+        pyth_publish_time: pyth.publishTime,
+        price_source: "pyth",
+      };
+    }
+    return { ...coin, price_source: "coingecko" };
+  });
+}
+
 /**
  * GET /api/coins
  * Returns top coins with real-time Pyth price overlay on CoinGecko market data
@@ -14,30 +35,43 @@ async function list(req, res, next) {
     const currency = req.query.currency || "usd";
     const category = req.query.category || "";
 
-    // Fetch CoinGecko market data
     const coins = await coingecko.getCoinsMarkets(page, perPage, currency, category);
+    res.json(await enrichWithPyth(coins));
+  } catch (err) {
+    next(err);
+  }
+}
 
-    // Overlay Pyth real-time prices for supported coins
-    const pythSymbols = Object.keys(CRYPTO_FEEDS);
-    const pythPrices = await getPythPrices(pythSymbols);
+/**
+ * GET /api/coins/new-listings?limit=60
+ * Pro: /coins/list/new + markets. Fallback: recently updated rows from top-250 sample.
+ */
+async function newListings(req, res, next) {
+  try {
+    const limit = Math.min(parseInt(req.query.limit) || 60, 120);
+    let rows = await coingecko.getNewListingsMarkets(limit);
+    // Without Pro /coins/list/new, avoid sorting top-250 by last_updated — majors update every tick and look identical to “Top”.
+    if (!rows || rows.length === 0) {
+      rows = await coingecko.getCoinsMarkets(1, Math.min(limit, 100), "usd", "", {
+        order: "market_cap_asc",
+      });
+    }
+    res.json(await enrichWithPyth(rows));
+  } catch (err) {
+    next(err);
+  }
+}
 
-    const enriched = coins.map((coin) => {
-      const sym = coin.symbol.toUpperCase();
-      const pyth = pythPrices[sym];
-      if (pyth) {
-        return {
-          ...coin,
-          current_price: pyth.price,
-          pyth_price: pyth.price,
-          pyth_confidence: pyth.confidence,
-          pyth_publish_time: pyth.publishTime,
-          price_source: "pyth",
-        };
-      }
-      return { ...coin, price_source: "coingecko" };
-    });
-
-    res.json(enriched);
+/**
+ * GET /api/coins/movers?type=gainers|losers&limit=50
+ * Best 24h movers among top ~250 by market cap (real ranking, not just the homepage’s 100 rows).
+ */
+async function marketMovers(req, res, next) {
+  try {
+    const type = req.query.type === "losers" ? "losers" : "gainers";
+    const limit = Math.min(parseInt(req.query.limit) || 50, 100);
+    const rows = await coingecko.getMarketMovers(type, limit);
+    res.json(await enrichWithPyth(rows));
   } catch (err) {
     next(err);
   }
@@ -430,4 +464,23 @@ async function pythHistory(req, res, next) {
   }
 }
 
-module.exports = { list, detail, ohlc, chart, global, trending, stream, fearGreed, exchanges, exchangeById, categories, gas, simplePrices, coinsByIds, memeBubbles, pythHistory };
+module.exports = {
+  list,
+  newListings,
+  marketMovers,
+  detail,
+  ohlc,
+  chart,
+  global,
+  trending,
+  stream,
+  fearGreed,
+  exchanges,
+  exchangeById,
+  categories,
+  gas,
+  simplePrices,
+  coinsByIds,
+  memeBubbles,
+  pythHistory,
+};
