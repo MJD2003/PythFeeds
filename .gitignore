@@ -4,3 +4,7 @@
 **/.env.local
 !**/.env.example
 !**/.env*.example
+
+# PM2 log files (keep empty dirs with .gitkeep if needed)
+pythackonserver/logs/*.log
+pythckathon/logs/*.log
