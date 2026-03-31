@@ -42,7 +42,8 @@ function logFatal(where, err) {
 
 process.on("uncaughtException", (err) => {
   logFatal("uncaughtException", err);
-  process.exit(1);
+  // Do NOT process.exit(1) — let the process survive so PM2 doesn't hit max_restarts.
+  // PM2's max_memory_restart handles genuine OOM; other errors are logged and the event loop continues.
 });
 
 process.on("unhandledRejection", (reason) => {
@@ -99,6 +100,7 @@ app.use("/api", generalLimiter);
 // Health check (enhanced)
 app.get("/api/health", (req, res) => {
   const stats = cache.getStats ? cache.getStats() : {};
+  const aiService = require("./services/aiService");
   res.json({
     status: "ok",
     timestamp: Date.now(),
@@ -107,6 +109,9 @@ app.get("/api/health", (req, res) => {
     cacheHits: stats.hits || 0,
     cacheMisses: stats.misses || 0,
     circuitBreakers: getCBStatuses(),
+    geminiBackoff: aiService.isGeminiInBackoff()
+      ? { active: true, remainingSeconds: aiService.getGeminiBackoffRemaining() }
+      : { active: false },
   });
 });
 
@@ -246,8 +251,12 @@ const server = app.listen(PORT, () => {
       }
 
       if (marketData) {
-        await aiService.generateDigest(marketData);
-        console.log("[AutoDigest] Digest generated successfully");
+        if (aiService.isGeminiInBackoff()) {
+          console.log(`[AutoDigest] Skipped — Gemini in cooldown (${aiService.getGeminiBackoffRemaining()}s remaining)`);
+        } else {
+          await aiService.generateDigest(marketData);
+          console.log("[AutoDigest] Digest generated successfully");
+        }
       }
     } catch (err) {
       console.warn("[AutoDigest] Failed:", err.message);

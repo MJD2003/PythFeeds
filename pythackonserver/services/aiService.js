@@ -5,6 +5,43 @@ const AI_TTL = 30 * 60; // 30 minutes
 const ANALYSIS_TTL_HOURS = 2; // asset analyses cached for 2h
 const DIGEST_TTL_HOURS = 4; // digest cached for 4h
 
+// ── Gemini circuit breaker ──
+const DEFAULT_BACKOFF_MS = 5 * 60 * 1000; // 5 minutes
+let geminiBackoffUntil = 0;
+
+function isGeminiInBackoff() {
+  return Date.now() < geminiBackoffUntil;
+}
+
+function getGeminiBackoffRemaining() {
+  const remaining = geminiBackoffUntil - Date.now();
+  return remaining > 0 ? Math.ceil(remaining / 1000) : 0;
+}
+
+/**
+ * Activate Gemini backoff. Parses retryDelay from the error if available,
+ * otherwise uses DEFAULT_BACKOFF_MS.
+ */
+function activateGeminiBackoff(err) {
+  let delayMs = DEFAULT_BACKOFF_MS;
+  const msg = err?.message || "";
+  // Parse retryDelay from Gemini 429 response (e.g. '"retryDelay":"43s"')
+  const match = msg.match(/retryDelay[":]\s*["](\d+)s?"/i) || msg.match(/retry in ([\d.]+)s/i);
+  if (match) {
+    const parsed = Math.ceil(parseFloat(match[1]));
+    if (parsed > 0) delayMs = Math.max(parsed * 1000, 60000); // at least 60s
+  }
+  // If it's a daily quota (limit: 0), back off for 10 minutes
+  if (msg.includes("limit: 0")) delayMs = Math.max(delayMs, 10 * 60 * 1000);
+  geminiBackoffUntil = Date.now() + delayMs;
+  console.warn(`[AI] Gemini circuit breaker OPEN — cooling down for ${Math.ceil(delayMs / 1000)}s`);
+}
+
+function isGeminiRateLimitError(err) {
+  const msg = err?.message || "";
+  return msg.includes("429") || msg.includes("quota") || msg.includes("Too Many Requests") || msg.includes("rate limit");
+}
+
 // ── DB-backed AI cache (shared across all users) ──
 async function getAiCache(key) {
   try {
@@ -133,6 +170,7 @@ Instructions:
 7. After your analysis, add a "**Sources:**" section listing the news articles you referenced, formatted as: "- [Source] Title".`;
 
   try {
+    if (isGeminiInBackoff()) throw new Error(`AI rate-limited — retry in ${getGeminiBackoffRemaining()}s`);
     const m = getModel();
     const result = await m.generateContent(prompt);
     const text = safeTextFromGenerateResult(result);
@@ -141,6 +179,7 @@ Instructions:
     await setAiCache(dbKey, text, ANALYSIS_TTL_HOURS);
     return text;
   } catch (err) {
+    if (isGeminiRateLimitError(err)) activateGeminiBackoff(err);
     console.error("[AI] analyzeAsset error:", err.message);
     throw new Error("AI analysis temporarily unavailable");
   }
@@ -164,12 +203,14 @@ Headlines:
 ${headlineBlock}`;
 
   try {
+    if (isGeminiInBackoff()) throw new Error(`AI rate-limited — retry in ${getGeminiBackoffRemaining()}s`);
     const m = getModel();
     const result = await m.generateContent(prompt);
     const text = safeTextFromGenerateResult(result);
     cache.set(key, text, AI_TTL);
     return text;
   } catch (err) {
+    if (isGeminiRateLimitError(err)) activateGeminiBackoff(err);
     console.error("[AI] marketBrief error:", err.message);
     throw new Error("Market brief temporarily unavailable");
   }
@@ -208,6 +249,7 @@ Platform Features You Can Reference:
 
 async function chat(message, history = [], marketContext = "") {
   try {
+    if (isGeminiInBackoff()) throw new Error(`AI rate-limited — retry in ${getGeminiBackoffRemaining()}s`);
     const m = getModel();
     const sysText = `You are PythFeeds AI, a helpful, concise, and expert financial market assistant embedded in the PythFeeds platform. You provide insights on crypto, stocks, metals, forex, and general market trends. Do not provide financial advice. Keep answers brief, formatted with markdown when appropriate, and easy to read. You have access to real-time market context to answer live queries. When users ask about platform features, guide them to the relevant page.
 ${PYTHFEEDS_KNOWLEDGE_BASE}${marketContext ? `\n${marketContext}` : ""}`;
@@ -223,6 +265,7 @@ ${PYTHFEEDS_KNOWLEDGE_BASE}${marketContext ? `\n${marketContext}` : ""}`;
     const result = await chatSession.sendMessage(message);
     return safeTextFromGenerateResult(result);
   } catch (err) {
+    if (isGeminiRateLimitError(err)) activateGeminiBackoff(err);
     console.error("[AI] chat error:", err.message);
     throw new Error("AI Chat temporarily unavailable");
   }
@@ -247,12 +290,14 @@ Instructions:
 3. Be direct, objective, and neutral. Do not give financial advice.`;
 
   try {
+    if (isGeminiInBackoff()) throw new Error(`AI rate-limited — retry in ${getGeminiBackoffRemaining()}s`);
     const m = getModel();
     const result = await m.generateContent(prompt);
     const text = safeTextFromGenerateResult(result);
     cache.set(key, text, AI_TTL * 24); // Cache for 12 hours
     return text;
   } catch (err) {
+    if (isGeminiRateLimitError(err)) activateGeminiBackoff(err);
     console.error("[AI] summarizeNews error:", err.message);
     throw new Error("News summary temporarily unavailable");
   }
@@ -262,6 +307,7 @@ Instructions:
  * Streaming chat - returns async generator
  */
 async function* chatStream(message, history = [], marketContext = "") {
+  if (isGeminiInBackoff()) throw new Error(`AI rate-limited — retry in ${getGeminiBackoffRemaining()}s`);
   const m = getModel();
   const sysText = `You are PythFeeds AI, a helpful, concise, and expert financial market assistant embedded in the PythFeeds platform. You provide insights on crypto, stocks, metals, forex, and general market trends. Do not provide financial advice. Keep answers brief, formatted with markdown when appropriate, and easy to read. You have access to real-time market context to answer live queries. When users ask about platform features, guide them to the relevant page.
 ${PYTHFEEDS_KNOWLEDGE_BASE}${marketContext ? `\n${marketContext}` : ""}`;
@@ -326,10 +372,12 @@ Provide:
 Keep it concise, use markdown formatting. Do NOT give buy/sell recommendations.`;
 
   try {
+    if (isGeminiInBackoff()) throw new Error(`AI rate-limited — retry in ${getGeminiBackoffRemaining()}s`);
     const m = getModel();
     const result = await m.generateContent(prompt);
     return safeTextFromGenerateResult(result);
   } catch (err) {
+    if (isGeminiRateLimitError(err)) activateGeminiBackoff(err);
     console.error("[AI] portfolioInsights error:", err.message);
     if (err.status) throw err;
     throw new Error("Portfolio insights temporarily unavailable");
@@ -355,10 +403,12 @@ For each notable pair (correlation > 0.7 or < -0.3):
 Keep it to 2-3 sentences per pair. Be factual. Do not give financial advice.`;
 
   try {
+    if (isGeminiInBackoff()) throw new Error(`AI rate-limited — retry in ${getGeminiBackoffRemaining()}s`);
     const m = getModel();
     const result = await m.generateContent(prompt);
     return safeTextFromGenerateResult(result);
   } catch (err) {
+    if (isGeminiRateLimitError(err)) activateGeminiBackoff(err);
     console.error("[AI] correlationInsights error:", err.message);
     throw new Error("Correlation insights temporarily unavailable");
   }
@@ -376,10 +426,12 @@ ${text}
 Rewrite it simply:`;
 
   try {
+    if (isGeminiInBackoff()) throw new Error(`AI rate-limited — retry in ${getGeminiBackoffRemaining()}s`);
     const m = getModel();
     const result = await m.generateContent(prompt);
     return safeTextFromGenerateResult(result);
   } catch (err) {
+    if (isGeminiRateLimitError(err)) activateGeminiBackoff(err);
     console.error("[AI] simplify error:", err.message);
     throw new Error("Simplification temporarily unavailable");
   }
@@ -436,6 +488,7 @@ Formatting rules:
 - No financial advice or buy/sell recommendations`;
 
   try {
+    if (isGeminiInBackoff()) throw new Error(`AI rate-limited — retry in ${getGeminiBackoffRemaining()}s`);
     const m = getModel();
     const result = await m.generateContent(prompt);
     const text = safeTextFromGenerateResult(result);
@@ -443,6 +496,7 @@ Formatting rules:
     await setAiCache(dbKey, text, DIGEST_TTL_HOURS);
     return text;
   } catch (err) {
+    if (isGeminiRateLimitError(err)) activateGeminiBackoff(err);
     console.error("[AI] digest error:", err.message);
     throw new Error("Digest temporarily unavailable");
   }
@@ -477,6 +531,7 @@ Headlines:
 ${batch.map((h, i) => `${i + 1}. ${h}`).join("\n")}`;
 
     try {
+      if (isGeminiInBackoff()) throw new Error(`AI rate-limited — retry in ${getGeminiBackoffRemaining()}s`);
       const m = getModel();
       const result = await m.generateContent(prompt);
       let text = safeTextFromGenerateResult(result);
@@ -492,6 +547,7 @@ ${batch.map((h, i) => `${i + 1}. ${h}`).join("\n")}`;
         }
       }
     } catch (err) {
+      if (isGeminiRateLimitError(err)) activateGeminiBackoff(err);
       console.error("[AI] classifySentiment error:", err.message);
       // Fallback: return neutral for all uncached
       for (const h of batch) {
@@ -525,15 +581,17 @@ Rules:
 - Return ONLY the one sentence, nothing else`;
 
   try {
+    if (isGeminiInBackoff()) return null; // silent fallback for mood
     const m = getModel();
     const result = await m.generateContent(prompt);
     const text = safeTextFromGenerateResult(result);
     cache.set(key, text, 3600); // 1h cache
     return text;
   } catch (err) {
+    if (isGeminiRateLimitError(err)) activateGeminiBackoff(err);
     console.error("[AI] mood error:", err.message);
     return null;
   }
 }
 
-module.exports = { analyzeAsset, getMarketBrief, chat, chatStream, summarizeNews, portfolioInsights, correlationInsights, simplify, generateDigest, classifySentiment, getMarketMood };
+module.exports = { analyzeAsset, getMarketBrief, chat, chatStream, summarizeNews, portfolioInsights, correlationInsights, simplify, generateDigest, classifySentiment, getMarketMood, isGeminiInBackoff, getGeminiBackoffRemaining };

@@ -1,21 +1,36 @@
 const mysql = require("mysql2/promise");
 
 let pool = null;
+/** Set true only after migrations succeed — never create a pool if login failed (avoids broken pool + query churn). */
+let dbReady = false;
+/** Set true when init fails — getPool() will not create a second pool with the same bad password. */
+let dbDisabled = false;
+
+function poolConfig() {
+  return {
+    host: process.env.MYSQL_HOST || "localhost",
+    port: parseInt(process.env.MYSQL_PORT, 10) || 3306,
+    user: process.env.MYSQL_USER || "root",
+    password: process.env.MYSQL_PASSWORD || "",
+    database: process.env.MYSQL_DATABASE || "pythfeeds",
+    waitForConnections: true,
+    connectionLimit: 10,
+    queueLimit: 0,
+    enableKeepAlive: true,
+    keepAliveInitialDelay: 10000,
+  };
+}
 
 function getPool() {
-  if (!pool) {
-    pool = mysql.createPool({
-      host: process.env.MYSQL_HOST || "localhost",
-      port: parseInt(process.env.MYSQL_PORT) || 3306,
-      user: process.env.MYSQL_USER || "root",
-      password: process.env.MYSQL_PASSWORD || "",
-      database: process.env.MYSQL_DATABASE || "pythfeeds",
-      waitForConnections: true,
-      connectionLimit: 10,
-      queueLimit: 0,
-      enableKeepAlive: true,
-      keepAliveInitialDelay: 10000,
-    });
+  if (dbDisabled) {
+    const e = new Error("Database unavailable — check MYSQL_* in .env on the server");
+    e.status = 503;
+    throw e;
+  }
+  if (!dbReady || !pool) {
+    const e = new Error("Database not ready yet");
+    e.status = 503;
+    throw e;
   }
   return pool;
 }
@@ -99,25 +114,32 @@ const MIGRATIONS = [
 
 async function initDatabase() {
   try {
-    // Create database if it doesn't exist
     const conn = await mysql.createConnection({
       host: process.env.MYSQL_HOST || "localhost",
-      port: parseInt(process.env.MYSQL_PORT) || 3306,
+      port: parseInt(process.env.MYSQL_PORT, 10) || 3306,
       user: process.env.MYSQL_USER || "root",
       password: process.env.MYSQL_PASSWORD || "",
     });
-    await conn.execute(`CREATE DATABASE IF NOT EXISTS \`${process.env.MYSQL_DATABASE || "pythfeeds"}\``);
+    await conn.execute(
+      `CREATE DATABASE IF NOT EXISTS \`${process.env.MYSQL_DATABASE || "pythfeeds"}\``
+    );
     await conn.end();
 
-    // Run migrations
-    const p = getPool();
+    pool = mysql.createPool(poolConfig());
     for (const sql of MIGRATIONS) {
-      await p.execute(sql);
+      await pool.execute(sql);
     }
+    dbReady = true;
     console.log("[MySQL] Database initialized, all tables ready");
     return true;
   } catch (err) {
+    dbDisabled = true;
+    dbReady = false;
+    pool = null;
     console.warn("[MySQL] Database not available, running without persistence:", err.message);
+    console.warn(
+      "[MySQL] Fix: set MYSQL_PASSWORD (or user) in pythackonserver/.env to match `mysql -u root -p` on this host."
+    );
     return false;
   }
 }

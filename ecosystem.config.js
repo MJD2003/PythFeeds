@@ -18,8 +18,9 @@ module.exports = {
       // ~8GB VPS: leave headroom for MySQL/nginx/OS; raise if you still see PM2 memory restarts in logs
       max_memory_restart: "3G",
       min_uptime: "10s",
-      max_restarts: 15,
-      restart_delay: 3000,
+      max_restarts: 0,           // 0 = unlimited — never permanently stop the backend
+      restart_delay: 5000,
+      exp_backoff_restart_delay: 1000,  // PM2 exponential backoff: 1s, 2s, 4s, 8s… between rapid restarts
       env: {
         NODE_ENV: "production",
         PORT: 4000,
@@ -40,8 +41,9 @@ module.exports = {
       autorestart: true,
       max_memory_restart: "2G",
       min_uptime: "10s",
-      max_restarts: 15,
-      restart_delay: 3000,
+      max_restarts: 0,           // 0 = unlimited
+      restart_delay: 5000,
+      exp_backoff_restart_delay: 1000,
       env: {
         NODE_ENV: "production",
         PORT: 3000,

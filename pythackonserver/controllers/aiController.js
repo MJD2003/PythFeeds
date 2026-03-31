@@ -1,6 +1,7 @@
 const aiService = require("../services/aiService");
 const newsService = require("../services/newsService");
 const cgService = require("../services/coingeckoService");
+const { isGeminiInBackoff, getGeminiBackoffRemaining } = aiService;
 
 async function analyze(req, res, next) {
   try {
@@ -296,6 +297,17 @@ async function digest(req, res, next) {
         marketData += `Headlines:\n${newsVal.slice(0, 8).map(n => `- [${n.source || "News"}] ${n.title}`).join("\n")}\n`;
       }
     } catch {}
+
+    // If Gemini is in backoff, return unavailable instead of throwing
+    if (isGeminiInBackoff()) {
+      return res.json({
+        digest: null,
+        date: today,
+        available: false,
+        retryAfter: getGeminiBackoffRemaining(),
+        message: "AI is cooling down — please try again shortly.",
+      });
+    }
 
     const digestText = await aiService.generateDigest(marketData);
 

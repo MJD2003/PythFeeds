@@ -9,12 +9,21 @@ function getBaseUrl(): string {
 
 async function apiFetch<T>(path: string, timeoutMs = 15000): Promise<T> {
   const base = getBaseUrl();
-  const res = await fetch(`${base}${path}`, {
-    next: { revalidate: 30 },
-    signal: AbortSignal.timeout(timeoutMs),
-  });
-  if (!res.ok) throw new Error(`API ${res.status}: ${res.statusText}`);
-  return res.json();
+  let lastErr: Error | null = null;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const res = await fetch(`${base}${path}`, {
+        next: { revalidate: 30 },
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      if (!res.ok) throw new Error(`API ${res.status}: ${res.statusText}`);
+      return res.json();
+    } catch (err) {
+      lastErr = err instanceof Error ? err : new Error(String(err));
+      if (attempt === 0) await new Promise((r) => setTimeout(r, 2000));
+    }
+  }
+  throw lastErr!;
 }
 
 // ── AI (Gemini) ──
