@@ -53,7 +53,10 @@ process.on("unhandledRejection", (reason) => {
   );
 });
 
-if (!process.env.GEMINI_API_KEY?.trim()) {
+const geminiEnabled = (process.env.GEMINI_ENABLED ?? "").trim().toLowerCase();
+if (geminiEnabled === "false" || geminiEnabled === "0") {
+  console.log("[AI] Gemini DISABLED via GEMINI_ENABLED=false — AI features will return fallback responses");
+} else if (!process.env.GEMINI_API_KEY?.trim()) {
   console.warn("[AI] GEMINI_API_KEY is missing — /api/ai/* routes will fail until set in pythackonserver/.env");
 } else {
   console.log(`[AI] Gemini OK (GEMINI_MODEL=${process.env.GEMINI_MODEL || "gemini-2.5-flash"})`);

@@ -8,12 +8,32 @@ const DIGEST_TTL_HOURS = 4; // digest cached for 4h
 // ── Gemini circuit breaker ──
 const DEFAULT_BACKOFF_MS = 5 * 60 * 1000; // 5 minutes
 let geminiBackoffUntil = 0;
+/** When true the free-tier daily quota is fully exhausted — stop retrying until midnight UTC. */
+let geminiDailyLockout = false;
+let geminiDailyLockoutUntil = 0;
+
+/** Check env var to completely disable AI without removing the key. */
+function isGeminiDisabledByConfig() {
+  const flag = (process.env.GEMINI_ENABLED ?? "").trim().toLowerCase();
+  return flag === "false" || flag === "0";
+}
 
 function isGeminiInBackoff() {
+  if (isGeminiDisabledByConfig()) return true;
+  if (geminiDailyLockout && Date.now() < geminiDailyLockoutUntil) return true;
+  if (geminiDailyLockout && Date.now() >= geminiDailyLockoutUntil) {
+    geminiDailyLockout = false; // reset at midnight
+    console.log("[AI] Daily lockout expired — Gemini re-enabled");
+  }
   return Date.now() < geminiBackoffUntil;
 }
 
 function getGeminiBackoffRemaining() {
+  if (isGeminiDisabledByConfig()) return Infinity;
+  if (geminiDailyLockout) {
+    const rem = geminiDailyLockoutUntil - Date.now();
+    return rem > 0 ? Math.ceil(rem / 1000) : 0;
+  }
   const remaining = geminiBackoffUntil - Date.now();
   return remaining > 0 ? Math.ceil(remaining / 1000) : 0;
 }
@@ -21,6 +41,8 @@ function getGeminiBackoffRemaining() {
 /**
  * Activate Gemini backoff. Parses retryDelay from the error if available,
  * otherwise uses DEFAULT_BACKOFF_MS.
+ * When the free-tier quota is fully exhausted (limit: 0) we lock out until
+ * midnight UTC to avoid thousands of pointless 429 retries.
  */
 function activateGeminiBackoff(err) {
   let delayMs = DEFAULT_BACKOFF_MS;
@@ -31,8 +53,16 @@ function activateGeminiBackoff(err) {
     const parsed = Math.ceil(parseFloat(match[1]));
     if (parsed > 0) delayMs = Math.max(parsed * 1000, 60000); // at least 60s
   }
-  // If it's a daily quota (limit: 0), back off for 10 minutes
-  if (msg.includes("limit: 0")) delayMs = Math.max(delayMs, 10 * 60 * 1000);
+  // If daily quota is fully exhausted (limit: 0), lock out until midnight UTC
+  if (msg.includes("limit: 0")) {
+    const now = new Date();
+    const midnight = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1));
+    geminiDailyLockout = true;
+    geminiDailyLockoutUntil = midnight.getTime();
+    const hoursLeft = ((midnight - now) / 3600000).toFixed(1);
+    console.warn(`[AI] Gemini daily quota EXHAUSTED (limit: 0) — locked out until midnight UTC (~${hoursLeft}h)`);
+    return;
+  }
   geminiBackoffUntil = Date.now() + delayMs;
   console.warn(`[AI] Gemini circuit breaker OPEN — cooling down for ${Math.ceil(delayMs / 1000)}s`);
 }
